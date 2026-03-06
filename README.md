@@ -1,6 +1,6 @@
 # arXiv Reader
 
-A mobile-first app to browse astrophysics papers from arXiv in a swipeable card format — like TikTok for research papers.
+A mobile-first app to browse astrophysics papers from arXiv in a swipeable card format.
 
 Built for astronomers and astrophysics enthusiasts who want to stay up to date with the latest publications without drowning in PDFs.
 
