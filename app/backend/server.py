@@ -26,7 +26,11 @@ load_dotenv(ROOT_DIR / '.env')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url, tls=True, tlsAllowInvalidCertificates=True)
+use_tls = 'localhost' not in mongo_url and '127.0.0.1' not in mongo_url
+if use_tls:
+    client = AsyncIOMotorClient(mongo_url, tls=True, tlsAllowInvalidCertificates=True)
+else:
+    client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ.get('DB_NAME', 'arxiv_tiktok')]
 
 # Rate limiter
@@ -97,7 +101,7 @@ def get_device_id(request: Request) -> str:
     return request.headers.get("X-Device-ID") or "anonymous"
 
 # Helper functions
-async def get_recent_paper_ids(category: str, max_results: int = 50):
+async def get_recent_paper_ids(category: str):
     """Scrape new and cross-listed paper IDs from arXiv new submissions page (excludes replacements).
     Returns (paper_ids, announced_date) where announced_date is the arXiv listing date (YYYY-MM-DD)."""
     cat_map = {
@@ -147,7 +151,7 @@ async def get_recent_paper_ids(category: str, max_results: int = 50):
                     seen.add(pid)
                     paper_ids.append(pid)
 
-        return paper_ids[:max_results], announced_date
+        return paper_ids, announced_date
     except Exception as e:
         logging.error(f"Error fetching recent paper IDs: {e}")
         return [], None
@@ -341,32 +345,52 @@ async def get_papers(
     request: Request,
     category: str = Query(default="astro-ph"),
     start: int = Query(default=0, ge=0),
-    max_results: int = Query(default=20, ge=1, le=50)
+    max_results: int = Query(default=25, ge=1, le=100),
+    year: Optional[int] = Query(default=None),
+    month: Optional[int] = Query(default=None),
+    date_from: Optional[str] = Query(default=None),  # YYYYMMDD
+    date_to: Optional[str] = Query(default=None),    # YYYYMMDD
 ):
-    """Fetch papers from arXiv API - newest first like TikTok"""
-    last_seen_date = None
-    
+    """Fetch papers from arXiv API - newest first, optionally filtered by year/month"""
+    import calendar as cal
+
     base_url = "https://export.arxiv.org/api/query"
-    query = f"cat:{category}"
+
+    # Build category filter — supports comma-separated list
+    cats = [c.strip() for c in category.split(',') if c.strip()]
+    if len(cats) > 1:
+        cat_filter = '(' + '+OR+'.join(f'cat:{c}' for c in cats) + ')'
+    else:
+        cat_filter = f'cat:{cats[0]}' if cats else 'cat:astro-ph'
+
+    if date_from and date_to:
+        query = f"{cat_filter}+AND+submittedDate:[{date_from}0000+TO+{date_to}2359]"
+    elif year and month:
+        last_day = cal.monthrange(year, month)[1]
+        df = f"{year}{month:02d}010000"
+        dt = f"{year}{month:02d}{last_day:02d}2359"
+        query = f"{cat_filter}+AND+submittedDate:[{df}+TO+{dt}]"
+    elif year:
+        query = f"{cat_filter}+AND+submittedDate:[{year}01010000+TO+{year}12312359]"
+    else:
+        query = cat_filter
+
     url = f"{base_url}?search_query={query}&start={start}&max_results={max_results}&sortBy=submittedDate&sortOrder=descending"
-    
+
     try:
         async with httpx.AsyncClient(timeout=30.0) as http_client:
             response = await http_client.get(url)
             response.raise_for_status()
-            
+
         feed = feedparser.parse(response.text)
-        papers = parse_arxiv_response(feed, category, last_seen_date)
+        papers = parse_arxiv_response(feed, category)
         total = int(feed.feed.get('opensearch_totalresults', 0))
-        
-        # Count new papers
-        new_papers_count = sum(1 for p in papers if p.is_new)
-        
+
         return PapersResponse(
             papers=papers,
             total=total,
             has_more=start + len(papers) < total,
-            new_papers_count=new_papers_count
+            new_papers_count=0
         )
     except Exception as e:
         logging.error(f"Error fetching papers: {e}")
@@ -391,11 +415,11 @@ async def get_paper_feed(
     try:
         import asyncio
         if len(categories) == 1:
-            recent_ids, announced_date = await get_recent_paper_ids(categories[0], max_results=100)
+            recent_ids, announced_date = await get_recent_paper_ids(categories[0])
             primary_category = categories[0]
         else:
             # Fetch IDs for each category in parallel and merge
-            results = await asyncio.gather(*[get_recent_paper_ids(c, max_results=100) for c in categories])
+            results = await asyncio.gather(*[get_recent_paper_ids(c) for c in categories])
             seen_set = set()
             recent_ids = []
             announced_date = None
@@ -583,7 +607,7 @@ async def get_for_you_papers(
     
     try:
         # Get recent paper IDs from arXiv new submissions page (same as feed)
-        recent_ids, announced_date = await get_recent_paper_ids(category, max_results=100)
+        recent_ids, announced_date = await get_recent_paper_ids(category)
 
         if recent_ids:
             # Get full paper details

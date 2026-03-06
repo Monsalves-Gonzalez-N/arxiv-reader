@@ -3,26 +3,20 @@ import {
   View,
   Text,
   StyleSheet,
-  Dimensions,
   ActivityIndicator,
   TouchableOpacity,
   StatusBar,
-  Platform,
   ScrollView,
   Linking,
   Share,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView, Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  runOnJS,
-} from 'react-native-reanimated';
+import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 const SWIPE_THRESHOLD = 50;
 const COFFEE_LINK = 'https://buymeacoffee.com/Nicolasmonsalves';
@@ -50,132 +44,147 @@ const CATEGORIES = [
   { key: 'astro-ph.IM', label: 'Instrumentation' },
 ];
 
-const YEARS = Array.from({ length: 36 }, (_, i) => 2025 - i); // 2025 to 1990
+const YEARS = Array.from({ length: 36 }, (_, i) => 2025 - i);
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const DAYS = Array.from({ length: 31 }, (_, i) => i + 1);
 
 function cleanLatex(text: string): string {
   if (!text) return text;
-  const replacements: [RegExp, string][] = [
-    // Greek lowercase
-    [/\\alpha/g,'α'],[/\\beta/g,'β'],[/\\gamma/g,'γ'],[/\\delta/g,'δ'],
-    [/\\varepsilon/g,'ε'],[/\\epsilon/g,'ε'],[/\\zeta/g,'ζ'],[/\\eta/g,'η'],
-    [/\\vartheta/g,'ϑ'],[/\\theta/g,'θ'],[/\\iota/g,'ι'],[/\\kappa/g,'κ'],
-    [/\\lambda/g,'λ'],[/\\mu/g,'μ'],[/\\nu/g,'ν'],[/\\xi/g,'ξ'],
-    [/\\varpi/g,'ϖ'],[/\\pi/g,'π'],[/\\varrho/g,'ϱ'],[/\\rho/g,'ρ'],
-    [/\\varsigma/g,'ς'],[/\\sigma/g,'σ'],[/\\tau/g,'τ'],[/\\upsilon/g,'υ'],
-    [/\\varphi/g,'φ'],[/\\phi/g,'φ'],[/\\chi/g,'χ'],[/\\psi/g,'ψ'],[/\\omega/g,'ω'],
-    // Greek uppercase
-    [/\\Gamma/g,'Γ'],[/\\Delta/g,'Δ'],[/\\Theta/g,'Θ'],[/\\Lambda/g,'Λ'],
-    [/\\Xi/g,'Ξ'],[/\\Pi/g,'Π'],[/\\Sigma/g,'Σ'],[/\\Upsilon/g,'Υ'],
-    [/\\Phi/g,'Φ'],[/\\Psi/g,'Ψ'],[/\\Omega/g,'Ω'],
-    // Math symbols
-    [/\\odot/g,'⊙'],[/\\oplus/g,'⊕'],[/\\otimes/g,'⊗'],[/\\cdots/g,'⋯'],
-    [/\\ldots/g,'…'],[/\\cdot/g,'·'],[/\\times/g,'×'],[/\\div/g,'÷'],
-    [/\\pm/g,'±'],[/\\mp/g,'∓'],[/\\leq/g,'≤'],[/\\geq/g,'≥'],
-    [/\\neq/g,'≠'],[/\\lesssim/g,'≲'],[/\\gtrsim/g,'≳'],[/\\ll/g,'≪'],
-    [/\\gg/g,'≫'],[/\\approx/g,'≈'],[/\\simeq/g,'≃'],[/\\equiv/g,'≡'],
-    [/\\sim/g,'~'],[/\\propto/g,'∝'],[/\\infty/g,'∞'],[/\\partial/g,'∂'],
-    [/\\nabla/g,'∇'],[/\\rightarrow/g,'→'],[/\\leftarrow/g,'←'],
-    [/\\leftrightarrow/g,'↔'],[/\\Rightarrow/g,'⇒'],[/\\to/g,'→'],
-    [/\\in\b/g,'∈'],[/\\notin/g,'∉'],[/\\subset/g,'⊂'],[/\\supset/g,'⊃'],
-    [/\\cup/g,'∪'],[/\\cap/g,'∩'],[/\\forall/g,'∀'],[/\\exists/g,'∃'],
-    // sqrt
-    [/\\sqrt\{([^}]+)\}/g,'√($1)'],[/\\sqrt/g,'√'],
-    // Text formatting — extract content
-    [/\\(?:text|mathrm|mathbf|mathit|mathcal|textbf|textit|emph)\{([^}]+)\}/g,'$1'],
-    // sub/superscript
-    [/\^\{([^}]+)\}/g,'^($1)'],[/_\{([^}]+)\}/g,'_($1)'],
-    [/\^([A-Za-z0-9])/g,'^$1'],[/_([A-Za-z0-9])/g,'_$1'],
-    // Remove $ markers
-    [/\$\$/g,''],[/\$/g,''],
-    // Remaining commands — strip braces, keep content
-    [/\\[a-zA-Z]+\{([^}]*)\}/g,'$1'],[/\\[a-zA-Z]+/g,''],
-    [/[{}]/g,''],[/\s+/g,' '],
-  ];
-  let result = text;
-  for (const [pattern, replacement] of replacements) result = result.replace(pattern, replacement);
-  return result.trim();
+  return text
+    .replace(/\$([^$]+)\$/g, '$1')
+    .replace(/\\textbf\{([^}]+)\}/g, '$1')
+    .replace(/\\textit\{([^}]+)\}/g, '$1')
+    .replace(/\\emph\{([^}]+)\}/g, '$1')
+    .replace(/\\text\{([^}]+)\}/g, '$1')
+    .replace(/\\mathrm\{([^}]+)\}/g, '$1')
+    .replace(/\\mathbf\{([^}]+)\}/g, '$1')
+    .replace(/\\mathit\{([^}]+)\}/g, '$1')
+    .replace(/\\sim/g, '~').replace(/\\approx/g, '≈').replace(/\\times/g, '×')
+    .replace(/\\pm/g, '±').replace(/\\alpha/g, 'α').replace(/\\beta/g, 'β')
+    .replace(/\\gamma/g, 'γ').replace(/\\delta/g, 'δ').replace(/\\sigma/g, 'σ')
+    .replace(/\\lambda/g, 'λ').replace(/\\mu/g, 'μ').replace(/\\nu/g, 'ν')
+    .replace(/\\pi/g, 'π').replace(/\\omega/g, 'ω').replace(/\\Omega/g, 'Ω')
+    .replace(/\\infty/g, '∞').replace(/\\leq/g, '≤').replace(/\\geq/g, '≥')
+    .replace(/\\[a-zA-Z]+\{([^}]+)\}/g, '$1').replace(/\{|\}/g, '')
+    .replace(/\s+/g, ' ').trim();
 }
 
 function splitAbstract(abstract: string): string[] {
   if (!abstract) return [''];
   const sentences = abstract.match(/[^.!?]+[.!?]+/g) || [abstract];
   const parts: string[] = [];
-  let currentPart = '';
-  
-  for (const sentence of sentences) {
-    const trimmedSentence = sentence.trim();
-    if (currentPart.length + trimmedSentence.length <= MAX_CHARS_PER_PART) {
-      currentPart += (currentPart ? ' ' : '') + trimmedSentence;
-    } else {
-      if (currentPart) parts.push(currentPart);
-      currentPart = trimmedSentence;
-    }
+  let cur = '';
+  for (const s of sentences) {
+    const t = s.trim();
+    if (cur.length + t.length <= MAX_CHARS_PER_PART) cur += (cur ? ' ' : '') + t;
+    else { if (cur) parts.push(cur); cur = t; }
   }
-  if (currentPart) parts.push(currentPart);
+  if (cur) parts.push(cur);
   return parts.length > 0 ? parts : [''];
 }
 
-export default function Index() {
-  const [deviceId, setDeviceId] = useState<string>('');
-  // viewedPaperIds: papers actually swiped past (persisted per calendar day)
-  const [viewedPaperIds, setViewedPaperIds] = useState<Set<string>>(new Set());
-  const [refreshing, setRefreshing] = useState(false);
+const STOP_WORDS = new Set(['the','and','for','this','that','with','from','are','was','were','been','have','has','not','but','they','their','them','its','our','which','when','than','also','into','more','such','these','those','been','will','can','may','would','could','should','using','used','show','shows','find','found','results','result','data','model','paper','study','work','two','one','new']);
 
+function rerankPapers(allPapers: Paper[], fromIndex: number, signalPapers: Paper[]): Paper[] {
+  if (signalPapers.length === 0 || fromIndex >= allPapers.length - 1) return allPapers;
+  const viewed = allPapers.slice(0, fromIndex);
+  const remaining = allPapers.slice(fromIndex);
+  const wordFreq = new Map<string, number>();
+  for (const p of signalPapers) {
+    const words = `${p.title} ${p.abstract}`.toLowerCase().match(/[a-z]{5,}/g) || [];
+    for (const w of words) {
+      if (!STOP_WORDS.has(w)) wordFreq.set(w, (wordFreq.get(w) || 0) + 1);
+    }
+  }
+  const maxFreq = Math.max(...wordFreq.values(), 1);
+  const scored = remaining.map(p => {
+    const words = `${p.title} ${p.abstract}`.toLowerCase().match(/[a-z]{5,}/g) || [];
+    let score = 0;
+    for (const w of words) score += (wordFreq.get(w) || 0) / maxFreq;
+    return { p, score };
+  });
+  const maxScore = Math.max(...scored.map(s => s.score));
+  if (maxScore < 0.5) return allPapers; // not enough signal — keep original order
+  scored.sort((a, b) => b.score - a.score);
+  return [...viewed, ...scored.map(s => s.p)];
+}
+
+function DateSpinner({ value, min, max, onChange, label, fmt }: {
+  value: number; min: number; max: number;
+  onChange: (v: number) => void; label: string;
+  fmt?: (v: number) => string;
+}) {
+  return (
+    <View style={styles.spinner}>
+      <Text style={styles.spinnerLabel}>{label}</Text>
+      <TouchableOpacity onPress={() => onChange(value < max ? value + 1 : min)} style={styles.spinnerArrow}>
+        <Ionicons name="chevron-up" size={18} color="#000" />
+      </TouchableOpacity>
+      <Text style={styles.spinnerValue}>{fmt ? fmt(value) : String(value).padStart(2, '0')}</Text>
+      <TouchableOpacity onPress={() => onChange(value > min ? value - 1 : max)} style={styles.spinnerArrow}>
+        <Ionicons name="chevron-down" size={18} color="#000" />
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+export default function Index() {
   const [papers, setPapers] = useState<Paper[]>([]);
-  // currentIndex is always 0 — displayPapers shrinks as papers are viewed,
-  // so the next unread paper is always at index 0.
-  const currentIndex = 0;
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set([]));
   const [likedPapers, setLikedPapers] = useState<Set<string>>(new Set());
   const [likedPapersList, setLikedPapersList] = useState<any[]>([]);
-  const [hasMore, setHasMore] = useState(true);
-  
-  // For You state
-  const [forYouPapers, setForYouPapers] = useState<Paper[]>([]);
-  const [forYouIndex, setForYouIndex] = useState(0);
-  const [yearFrom, setYearFrom] = useState(2024);
-  const [yearTo, setYearTo] = useState(2026);
-  const [forYouLoading, setForYouLoading] = useState(false);
-  
-  const [currentView, setCurrentView] = useState<'feed' | 'foryou' | 'likes' | 'settings'>('feed');
+
+  // Date filter state
+  const [selectedYear, setSelectedYear] = useState<number | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
+  const [customFrom, setCustomFrom] = useState<string | null>(null); // YYYYMMDD
+  const [customTo, setCustomTo] = useState<string | null>(null);     // YYYYMMDD
+
+  // Date picker UI
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState<'months' | 'custom'>('months');
+  const [pickerYear, setPickerYear] = useState(new Date().getFullYear());
+  const now = new Date();
+  const [fromDay, setFromDay] = useState(1);
+  const [fromMonth, setFromMonth] = useState(1);
+  const [fromYear, setFromYear] = useState(now.getFullYear());
+  const [toDay, setToDay] = useState(now.getDate());
+  const [toMonth, setToMonth] = useState(now.getMonth() + 1);
+  const [toYear, setToYear] = useState(now.getFullYear());
+
+  const [currentView, setCurrentView] = useState<'feed' | 'likes' | 'settings'>('feed');
   const [abstractPart, setAbstractPart] = useState(0);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
-  const [showYearPicker, setShowYearPicker] = useState<'from' | 'to' | null>(null);
-  const [todayOnly, setTodayOnly] = useState(false);
 
   const olderStartRef = useRef(0);
-
+  const dwellStartRef = useRef<number>(Date.now());
+  const engagedIdsRef = useRef<Set<string>>(new Set());
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
 
-  const todayPapers = useMemo(() => papers.filter(p => p.is_new), [papers]);
-  const allTodaySeen = todayPapers.length > 0 && todayPapers.every(p => viewedPaperIds.has(p.id));
-
-  const displayPapers = useMemo(() => {
-    if (todayOnly) return papers.filter(p => p.is_new && !viewedPaperIds.has(p.id));
-    return papers.filter(p => !viewedPaperIds.has(p.id));
-  }, [papers, todayOnly, viewedPaperIds]);
-
-  const currentPaper = currentView === 'foryou' ? forYouPapers[forYouIndex] : displayPapers[currentIndex];
-  const abstractParts = useMemo(() => 
+  const currentPaper = papers[currentIndex];
+  const abstractParts = useMemo(() =>
     currentPaper ? splitAbstract(cleanLatex(currentPaper.abstract)) : [''],
     [currentPaper?.abstract]
   );
   const totalParts = abstractParts.length + 1;
 
+  // Date label for header button
+  const isToday = !selectedYear && !customFrom;
+  const dateLabel = customFrom && customTo
+    ? `${customFrom.slice(6)}/${MONTH_NAMES[parseInt(customFrom.slice(4,6))-1]}–${customTo.slice(6)}/${MONTH_NAMES[parseInt(customTo.slice(4,6))-1]}`
+    : selectedYear
+      ? `${MONTH_NAMES[(selectedMonth ?? 1) - 1]} ${selectedYear}`
+      : 'Today';
+
   useEffect(() => {
     initDeviceId();
     loadSavedCategories();
-    loadViewedPapers();
   }, []);
-
-  useEffect(() => {
-    if (viewedPaperIds.size === 0) return;
-    const today = new Date().toISOString().split('T')[0];
-    AsyncStorage.setItem(`viewed_${today}`, JSON.stringify([...viewedPaperIds]));
-  }, [viewedPaperIds]);
 
   const initDeviceId = async () => {
     let id = await AsyncStorage.getItem('device_id');
@@ -183,97 +192,89 @@ export default function Index() {
       id = `device_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
       await AsyncStorage.setItem('device_id', id);
     }
-    setDeviceId(id);
   };
 
   const loadSavedCategories = async () => {
     try {
       const saved = await AsyncStorage.getItem('selected_categories');
-      if (saved) {
-        setSelectedCategories(new Set(JSON.parse(saved)));
-      } else {
-        setSelectedCategories(new Set(['astro-ph.GA', 'astro-ph.CO']));
-      }
+      setSelectedCategories(saved ? new Set(JSON.parse(saved)) : new Set(['astro-ph.GA', 'astro-ph.CO']));
     } catch {
       setSelectedCategories(new Set(['astro-ph.GA', 'astro-ph.CO']));
     }
   };
 
-  const loadViewedPapers = async () => {
-    const today = new Date().toISOString().split('T')[0];
-    const saved = await AsyncStorage.getItem(`viewed_${today}`);
-    if (saved) setViewedPaperIds(new Set(JSON.parse(saved)));
-  };
-
-  const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false, silent: boolean = false) => {
+  const fetchPapers = useCallback(async (
+    categories: Set<string>,
+    year: number | null,
+    month: number | null,
+    dateFrom: string | null,
+    dateTo: string | null,
+    start: number = 0,
+    append: boolean = false,
+  ) => {
     try {
-      if (!silent) {
-        if (start === 0 && !append) setLoading(true);
-        else setLoadingMore(true);
-      }
+      if (!append) setLoading(true);
+      else setLoadingMore(true);
 
       const id = await AsyncStorage.getItem('device_id');
       const headers: any = id ? { 'X-Device-ID': id } : {};
+      const category = Array.from(categories).join(',');
 
-      const categoryArray = Array.from(categories);
-      const category = categoryArray.join(',');
+      let url: string;
+      if (dateFrom && dateTo) {
+        url = `${EXPO_PUBLIC_BACKEND_URL}/api/papers?category=${category}&date_from=${dateFrom}&date_to=${dateTo}&start=${start}&max_results=25`;
+      } else if (year) {
+        url = `${EXPO_PUBLIC_BACKEND_URL}/api/papers?category=${category}&year=${year}&month=${month ?? 1}&start=${start}&max_results=25`;
+      } else {
+        url = `${EXPO_PUBLIC_BACKEND_URL}/api/papers/feed?category=${category}`;
+      }
 
-      const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_URL}/api/papers/feed?category=${category}`,
-        { headers }
-      );
+      const response = await fetch(url, { headers });
       const data = await response.json();
       const fetched: Paper[] = data.papers || [];
 
       if (append) {
         setPapers(prev => {
-          const existingIds = new Set(prev.map(p => p.id));
-          return [...prev, ...fetched.filter(p => !existingIds.has(p.id))];
+          const ids = new Set(prev.map(p => p.id));
+          const newOnes = fetched.filter(p => !ids.has(p.id));
+          olderStartRef.current += newOnes.length;
+          return [...prev, ...newOnes];
         });
       } else {
         setPapers(fetched);
-        if (!silent) setAbstractPart(0);
+        setAbstractPart(0);
+        olderStartRef.current = fetched.length;
+        dwellStartRef.current = Date.now();
+        engagedIdsRef.current = new Set();
+        // Restore saved position for today's feed
+        if (!year && !dateFrom) {
+          try {
+            const saved = await AsyncStorage.getItem('feed_position');
+            if (saved) {
+              const { date, paperId } = JSON.parse(saved);
+              const today = new Date().toISOString().split('T')[0];
+              if (date === today) {
+                const idx = fetched.findIndex(p => p.id === paperId);
+                if (idx > 0) { setCurrentIndex(idx); return; }
+              }
+            }
+          } catch {}
+        }
+        setCurrentIndex(0);
       }
       setHasMore(data.has_more ?? false);
     } catch (error) {
       console.error('Error fetching papers:', error);
     } finally {
-      if (!silent) {
-        setLoading(false);
-        setLoadingMore(false);
-        setRefreshing(false);
-      }
+      setLoading(false);
+      setLoadingMore(false);
     }
   }, []);
-
-  const fetchForYouPapers = useCallback(async () => {
-    try {
-      setForYouLoading(true);
-
-      const id = await AsyncStorage.getItem('device_id');
-      const headers: any = id ? { 'X-Device-ID': id } : {};
-      
-      const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_URL}/api/for-you?category=astro-ph&year_from=${yearFrom}&year_to=${yearTo}&max_results=30`,
-        { headers }
-      );
-      const data = await response.json();
-      
-      setForYouPapers(data.papers || []);
-      setForYouIndex(0);
-      setAbstractPart(0);
-    } catch (error) {
-      console.error('Error fetching for-you papers:', error);
-    } finally {
-      setForYouLoading(false);
-    }
-  }, [yearFrom, yearTo]);
 
   const fetchLikedPapers = useCallback(async () => {
     try {
       const id = await AsyncStorage.getItem('device_id');
       const headers: any = id ? { 'X-Device-ID': id } : {};
-
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes`, { headers });
       const data = await response.json();
       setLikedPapers(new Set(data.map((p: any) => p.paper_id)));
@@ -283,63 +284,36 @@ export default function Index() {
     }
   }, []);
 
-  const fetchOlderPapers = useCallback(async (categories: Set<string>) => {
-    try {
-      setLoadingMore(true);
-      const id = await AsyncStorage.getItem('device_id');
-      const headers: any = id ? { 'X-Device-ID': id } : {};
-      const category = Array.from(categories).join(',');
-      const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_URL}/api/papers?category=${category}&start=${olderStartRef.current}&max_results=20`,
-        { headers }
-      );
-      const data = await response.json();
-      const fetched: Paper[] = data.papers || [];
-      if (fetched.length > 0) {
-        olderStartRef.current += fetched.length;
-        setPapers(prev => {
-          const existingIds = new Set(prev.map(p => p.id));
-          return [...prev, ...fetched.filter(p => !existingIds.has(p.id))];
-        });
-      }
-    } catch (error) {
-      console.error('Error fetching older papers:', error);
-    } finally {
-      setLoadingMore(false);
-    }
-  }, []);
-
   useEffect(() => {
     if (selectedCategories.size > 0) {
       olderStartRef.current = 0;
-      fetchPapers(selectedCategories);
+      fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo);
       fetchLikedPapers();
     }
   }, [selectedCategories]);
 
   useEffect(() => {
-    if (currentView === 'foryou') {
-      fetchForYouPapers();
+    if (selectedCategories.size > 0) {
+      olderStartRef.current = 0;
+      fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo);
     }
-  }, [currentView, yearFrom, yearTo]);
+  }, [selectedYear, selectedMonth, customFrom, customTo]);
 
-  // When today mode is turned off and queue is empty, start fetching older papers
+  // Persist position (today mode only) so user resumes where they left off
   useEffect(() => {
-    if (!todayOnly && displayPapers.length === 0 && !loading && !loadingMore && selectedCategories.size > 0) {
-      fetchOlderPapers(selectedCategories);
+    if (!selectedYear && !customFrom && papers.length > 0 && currentIndex < papers.length) {
+      const today = new Date().toISOString().split('T')[0];
+      const paperId = papers[currentIndex]?.id;
+      if (paperId) AsyncStorage.setItem('feed_position', JSON.stringify({ date: today, paperId }));
     }
-  }, [todayOnly]);
+  }, [currentIndex]);
 
-  const toggleCategory = (categoryKey: string) => {
+  const toggleCategory = (key: string) => {
     setSelectedCategories(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(categoryKey)) {
-        if (newSet.size > 1) newSet.delete(categoryKey);
-      } else {
-        newSet.add(categoryKey);
-      }
-      AsyncStorage.setItem('selected_categories', JSON.stringify(Array.from(newSet)));
-      return newSet;
+      const s = new Set(prev);
+      if (s.has(key)) { if (s.size > 1) s.delete(key); } else s.add(key);
+      AsyncStorage.setItem('selected_categories', JSON.stringify(Array.from(s)));
+      return s;
     });
   };
 
@@ -348,149 +322,114 @@ export default function Index() {
     const id = await AsyncStorage.getItem('device_id');
     const headers: any = { 'Content-Type': 'application/json' };
     if (id) headers['X-Device-ID'] = id;
-    
     try {
       if (isLiked) {
-        await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes/${paper.id}`, {
-          method: 'DELETE',
-          headers,
-        });
-        setLikedPapers(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(paper.id);
-          return newSet;
-        });
+        await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes/${paper.id}`, { method: 'DELETE', headers });
+        setLikedPapers(prev => { const s = new Set(prev); s.delete(paper.id); return s; });
       } else {
         await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            paper_id: paper.id,
-            title: paper.title,
-            abstract: paper.abstract,
-            authors: paper.authors,
-            published: paper.published,
-            link: paper.link,
-            category: paper.category,
-          }),
+          method: 'POST', headers,
+          body: JSON.stringify({ paper_id: paper.id, title: paper.title, abstract: paper.abstract, authors: paper.authors, published: paper.published, link: paper.link, category: paper.category }),
         });
         setLikedPapers(prev => new Set(prev).add(paper.id));
-        // Feedback loop: silently re-rank the queue based on new like
-        fetchPapers(selectedCategories, 0, false, true);
       }
       fetchLikedPapers();
-    } catch (error) {
-      console.error('Error toggling like:', error);
-    }
-  };
-
-  // Mark paper as viewed (to avoid repetition like TikTok)
-  const markPaperViewed = async (paperId: string) => {
-    try {
-      const id = await AsyncStorage.getItem('device_id');
-      const headers: any = { 'Content-Type': 'application/json' };
-      if (id) headers['X-Device-ID'] = id;
-      
-      await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/papers/mark-viewed/${paperId}`, {
-        method: 'POST',
-        headers,
-      });
-    } catch (error) {
-      // Silent fail - not critical
-    }
+    } catch (error) { console.error('Error toggling like:', error); }
   };
 
   const goToNext = useCallback(() => {
-    const paper = currentView === 'foryou' ? forYouPapers[forYouIndex] : displayPapers[0];
+    setAbstractPart(0);
+    const next = currentIndex + 1;
 
-    if (currentView === 'foryou') {
-      if (forYouIndex < forYouPapers.length - 1) {
-        setForYouIndex(prev => prev + 1);
-        setAbstractPart(0);
-      }
-    } else {
-      if (paper) {
-        // Mark as viewed — displayPapers auto-shrinks, next paper appears at index 0
-        markPaperViewed(paper.id);
-        setViewedPaperIds(prev => new Set([...prev, paper.id]));
-        setAbstractPart(0);
-        // Load more older papers when running low in non-today mode
-        if (!todayOnly && displayPapers.length <= 5 && !loadingMore) {
-          fetchOlderPapers(selectedCategories);
-        }
-      } else if (!todayOnly && !loadingMore) {
-        fetchOlderPapers(selectedCategories);
-      }
+    // Track dwell time — >8s counts as implicit engagement signal
+    const dwell = Date.now() - dwellStartRef.current;
+    dwellStartRef.current = Date.now();
+    if (dwell > 8000 && papers[currentIndex]) {
+      engagedIdsRef.current.add(papers[currentIndex].id);
     }
-  }, [currentView, forYouIndex, displayPapers, forYouPapers, loadingMore, selectedCategories, fetchOlderPapers, todayOnly]);
+
+    if (next < papers.length) {
+      // Re-rank remaining papers based on likes + engagement
+      const signalPapers = papers.filter(p => likedPapers.has(p.id) || engagedIdsRef.current.has(p.id));
+      if (signalPapers.length > 0) {
+        setPapers(prev => rerankPapers(prev, next, signalPapers));
+      }
+      setCurrentIndex(next);
+      if (hasMore && papers.length - next < 5 && !loadingMore) {
+        fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo, olderStartRef.current, true);
+      }
+    } else if (hasMore && !loadingMore) {
+      fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo, olderStartRef.current, true);
+    } else {
+      setCurrentIndex(papers.length);
+    }
+  }, [currentIndex, papers, likedPapers, hasMore, loadingMore, selectedCategories, selectedYear, selectedMonth, customFrom, customTo, fetchPapers]);
 
   const goToPrevious = useCallback(() => {
-    if (currentView === 'foryou' && forYouIndex > 0) {
-      setForYouIndex(prev => prev - 1);
-      setAbstractPart(0);
-    }
-    // In feed mode: no back — viewed papers are removed from display
-  }, [currentView, forYouIndex]);
+    if (currentIndex > 0) { setCurrentIndex(prev => prev - 1); setAbstractPart(0); }
+  }, [currentIndex]);
 
   const nextAbstractPart = useCallback(() => {
-    if (abstractPart < abstractParts.length) {
-      setAbstractPart(prev => prev + 1);
-    }
+    if (abstractPart < abstractParts.length) setAbstractPart(prev => prev + 1);
   }, [abstractPart, abstractParts.length]);
 
   const prevAbstractPart = useCallback(() => {
-    if (abstractPart > 0) {
-      setAbstractPart(prev => prev - 1);
-    }
+    if (abstractPart > 0) setAbstractPart(prev => prev - 1);
   }, [abstractPart]);
 
   const panGesture = Gesture.Pan()
     .minDistance(10)
-    .onUpdate((e) => {
-      translateX.value = e.translationX;
-      translateY.value = e.translationY;
-    })
-    .onEnd((e) => {
+    .onUpdate(e => { translateX.value = e.translationX; translateY.value = e.translationY; })
+    .onEnd(e => {
       const { translationX: tx, translationY: ty, velocityX: vx, velocityY: vy } = e;
-      
-      // Vertical swipe always changes paper (even in abstract)
       if (Math.abs(ty) > Math.abs(tx) * 0.8) {
-        if (ty < -SWIPE_THRESHOLD || vy < -500) {
-          runOnJS(goToNext)();
-        } else if (ty > SWIPE_THRESHOLD || vy > 500) {
-          runOnJS(goToPrevious)();
-        }
-      } 
-      // Horizontal swipe changes abstract part
-      else if (Math.abs(tx) > SWIPE_THRESHOLD || Math.abs(vx) > 500) {
-        if (tx < -SWIPE_THRESHOLD || vx < -500) {
-          runOnJS(nextAbstractPart)();
-        } else if (tx > SWIPE_THRESHOLD || vx > 500) {
-          runOnJS(prevAbstractPart)();
-        }
+        if (ty < -SWIPE_THRESHOLD || vy < -500) runOnJS(goToNext)();
+        else if (ty > SWIPE_THRESHOLD || vy > 500) runOnJS(goToPrevious)();
+      } else if (Math.abs(tx) > SWIPE_THRESHOLD || Math.abs(vx) > 500) {
+        if (tx < -SWIPE_THRESHOLD || vx < -500) runOnJS(nextAbstractPart)();
+        else if (tx > SWIPE_THRESHOLD || vx > 500) runOnJS(prevAbstractPart)();
       }
-      
-      translateX.value = 0;
-      translateY.value = 0;
+      translateX.value = 0; translateY.value = 0;
     });
 
-  const animatedCardStyle = useAnimatedStyle(() => ({
-    transform: [],
-  }));
+  const animatedCardStyle = useAnimatedStyle(() => ({ transform: [] }));
+
+  const applyCustomRange = () => {
+    const from = `${fromYear}${String(fromMonth).padStart(2,'0')}${String(fromDay).padStart(2,'0')}`;
+    const to = `${toYear}${String(toMonth).padStart(2,'0')}${String(toDay).padStart(2,'0')}`;
+    setCustomFrom(from);
+    setCustomTo(to);
+    setSelectedYear(null);
+    setSelectedMonth(null);
+    setShowDatePicker(false);
+    setDatePickerMode('months');
+  };
 
   const exportToCSV = async () => {
     if (likedPapersList.length === 0) return;
-    const headers = 'Title,Authors,Published,Link\n';
-    const rows = likedPapersList.map(p =>
-      `"${p.title.replace(/"/g, '""')}","${p.authors.join('; ')}",${p.published},${p.link}`
-    ).join('\n');
-    await Share.share({ message: headers + rows, title: 'My arXiv Papers' });
+    const h = 'Title,Authors,Published,Link\n';
+    const rows = likedPapersList.map(p => `"${p.title.replace(/"/g, '""')}","${p.authors.join('; ')}",${p.published},${p.link}`).join('\n');
+    const csv = h + rows;
+    if (Platform.OS === 'web') {
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'arxiv_papers.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      await Share.share({ message: csv, title: 'My arXiv Papers' });
+    }
   };
 
   const openCoffee = () => Linking.openURL(COFFEE_LINK);
   const openPaper = () => currentPaper && Linking.openURL(currentPaper.link);
 
-  if (loading) {
+  const allPapersSeen = !loading && papers.length > 0 && currentIndex >= papers.length;
+  const noPapersFound = !loading && papers.length === 0;
+
+  if (loading && papers.length === 0) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="dark-content" />
@@ -515,35 +454,25 @@ export default function Index() {
               <Ionicons name="download-outline" size={24} color="#000" />
             </TouchableOpacity>
           </View>
-
           <ScrollView style={styles.likesList}>
             {likedPapersList.length === 0 ? (
               <View style={styles.emptyState}>
                 <Ionicons name="heart-outline" size={48} color="#ccc" />
                 <Text style={styles.emptyText}>No saved papers</Text>
               </View>
-            ) : (
-              likedPapersList.map((paper, idx) => (
-                <TouchableOpacity
-                  key={paper.paper_id || idx}
-                  style={styles.likedCard}
-                  onPress={() => Linking.openURL(paper.link)}
-                >
-                  <View style={styles.likedContent}>
-                    <Text style={styles.likedTitle} numberOfLines={2}>{paper.title}</Text>
-                    <Text style={styles.likedAuthors} numberOfLines={1}>
-                      {paper.authors.slice(0, 2).join(', ')}
-                    </Text>
-                    <Text style={styles.likedDate}>{paper.published}</Text>
-                  </View>
-                  <TouchableOpacity onPress={() => toggleLike(paper)}>
-                    <Ionicons name="heart" size={20} color="#000" />
-                  </TouchableOpacity>
+            ) : likedPapersList.map((paper, idx) => (
+              <TouchableOpacity key={paper.paper_id || idx} style={styles.likedCard} onPress={() => Linking.openURL(paper.link)}>
+                <View style={styles.likedContent}>
+                  <Text style={styles.likedTitle} numberOfLines={2}>{paper.title}</Text>
+                  <Text style={styles.likedAuthors} numberOfLines={1}>{paper.authors.slice(0, 2).join(', ')}</Text>
+                  <Text style={styles.likedDate}>{paper.published}</Text>
+                </View>
+                <TouchableOpacity onPress={() => toggleLike(paper)}>
+                  <Ionicons name="heart" size={20} color="#000" />
                 </TouchableOpacity>
-              ))
-            )}
+              </TouchableOpacity>
+            ))}
           </ScrollView>
-
           {likedPapersList.length > 0 && (
             <TouchableOpacity style={styles.exportBtn} onPress={exportToCSV}>
               <Text style={styles.exportBtnText}>Export CSV</Text>
@@ -567,10 +496,8 @@ export default function Index() {
             <Text style={styles.headerTitle}>Settings</Text>
             <View style={{ width: 24 }} />
           </View>
-
           <ScrollView style={styles.settingsContent}>
             <View style={styles.divider} />
-
             <TouchableOpacity style={styles.supportCard} onPress={openCoffee}>
               <View style={styles.supportCardContent}>
                 <Ionicons name="heart" size={20} color="#fff" />
@@ -581,11 +508,7 @@ export default function Index() {
                 <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.6)" />
               </View>
             </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.settingsItem} 
-              onPress={() => Linking.openURL('https://arxiv.org')}
-            >
+            <TouchableOpacity style={styles.settingsItem} onPress={() => Linking.openURL('https://arxiv.org')}>
               <Ionicons name="globe-outline" size={24} color="#000" />
               <View style={styles.settingsItemContent}>
                 <Text style={styles.settingsItemTitle}>arXiv.org</Text>
@@ -599,269 +522,73 @@ export default function Index() {
     );
   }
 
-  // For You View
-  if (currentView === 'foryou') {
-    return (
-      <GestureHandlerRootView style={styles.container}>
-        <StatusBar barStyle="dark-content" />
-        <SafeAreaView style={styles.safeArea}>
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => setCurrentView('feed')}>
-              <Ionicons name="arrow-back" size={24} color="#000" />
-            </TouchableOpacity>
-            <Text style={styles.headerTitle}>For You</Text>
-            <View style={{ width: 24 }} />
-          </View>
-
-          {/* Year Selector */}
-          <View style={styles.yearSelector}>
-            <TouchableOpacity 
-              style={styles.yearBtn}
-              onPress={() => setShowYearPicker('from')}
-            >
-              <Text style={styles.yearLabel}>From</Text>
-              <Text style={styles.yearValue}>{yearFrom}</Text>
-            </TouchableOpacity>
-            <Text style={styles.yearDash}>—</Text>
-            <TouchableOpacity 
-              style={styles.yearBtn}
-              onPress={() => setShowYearPicker('to')}
-            >
-              <Text style={styles.yearLabel}>To</Text>
-              <Text style={styles.yearValue}>{yearTo}</Text>
-            </TouchableOpacity>
-          </View>
-
-          {forYouLoading ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="large" color="#000" />
-              <Text style={styles.loadingText}>Finding papers for you...</Text>
-            </View>
-          ) : (
-            <GestureDetector gesture={panGesture}>
-              <Animated.View style={[styles.cardArea, animatedCardStyle]}>
-                {currentPaper ? (
-                  <View style={styles.card}>
-                    {currentPaper.is_recommendation ? (
-                      <View style={styles.recBadge}>
-                        <Text style={styles.recBadgeText}>Recommended</Text>
-                      </View>
-                    ) : (
-                      <View style={[styles.recBadge, { backgroundColor: '#e8f4e8' }]}>
-                        <Text style={[styles.recBadgeText, { color: '#4a7c4a' }]}>Explore</Text>
-                      </View>
-                    )}
-
-                    <View style={styles.cardContent}>
-                      {abstractPart === 0 ? (
-                        <>
-                          <Text style={styles.paperTitle}>{cleanLatex(currentPaper.title)}</Text>
-                          {currentPaper.comment && (
-                            <View style={styles.commentBadge}>
-                              <Text style={styles.commentText} numberOfLines={2}>
-                                {currentPaper.comment}
-                              </Text>
-                            </View>
-                          )}
-                          <Text style={styles.paperDate}>{currentPaper.published}</Text>
-                          <TouchableOpacity style={styles.linkBtn} onPress={openPaper}>
-                            <Ionicons name="open-outline" size={16} color="#666" />
-                            <Text style={styles.linkBtnText}>Open in arXiv</Text>
-                          </TouchableOpacity>
-                        </>
-                      ) : (
-                        <>
-                          <Text style={styles.abstractPartLabel}>
-                            Part {abstractPart}/{abstractParts.length}
-                          </Text>
-                          <Text style={styles.abstractText}>
-                            {abstractParts[abstractPart - 1] || ''}
-                          </Text>
-                        </>
-                      )}
-                    </View>
-
-                    <View style={styles.dots}>
-                      {Array.from({ length: totalParts }, (_, i) => (
-                        <View key={i} style={[styles.dot, abstractPart === i && styles.dotActive]} />
-                      ))}
-                    </View>
-
-                    <Text style={styles.counter}>
-                      {forYouIndex + 1} / {forYouPapers.length}
-                    </Text>
-                  </View>
-                ) : (
-                  <View style={styles.emptyCard}>
-                    <Ionicons name="sparkles-outline" size={48} color="#ccc" />
-                    <Text style={styles.emptyCardText}>No papers found for this year range</Text>
-                    <Text style={styles.emptyCardSubtext}>Try adjusting the years above</Text>
-                  </View>
-                )}
-              </Animated.View>
-            </GestureDetector>
-          )}
-
-          <View style={styles.bottomBar}>
-            <View style={styles.swipeHints}>
-              <Text style={styles.hintText}>
-                {abstractPart === 0 ? `Swipe ← for abstract` : 'Swipe → to go back'}
-              </Text>
-            </View>
-            
-            {currentPaper && (
-              <TouchableOpacity
-                style={styles.likeBtn}
-                onPress={() => toggleLike(currentPaper)}
-              >
-                <Ionicons
-                  name={likedPapers.has(currentPaper.id) ? 'heart' : 'heart-outline'}
-                  size={28}
-                  color={likedPapers.has(currentPaper.id) ? '#000' : '#666'}
-                />
-              </TouchableOpacity>
-            )}
-          </View>
-
-          {/* Year Picker Modal */}
-          {showYearPicker && (
-            <TouchableOpacity
-              style={styles.modalOverlay}
-              activeOpacity={1}
-              onPress={() => setShowYearPicker(null)}
-            >
-              <View style={styles.yearModal}>
-                <Text style={styles.yearModalTitle}>
-                  Select {showYearPicker === 'from' ? 'Start' : 'End'} Year
-                </Text>
-                <ScrollView style={styles.yearList}>
-                  {YEARS.map(year => (
-                    <TouchableOpacity
-                      key={year}
-                      style={[
-                        styles.yearItem,
-                        (showYearPicker === 'from' ? yearFrom : yearTo) === year && styles.yearItemActive
-                      ]}
-                      onPress={() => {
-                        if (showYearPicker === 'from') setYearFrom(year);
-                        else setYearTo(year);
-                        setShowYearPicker(null);
-                      }}
-                    >
-                      <Text style={[
-                        styles.yearItemText,
-                        (showYearPicker === 'from' ? yearFrom : yearTo) === year && styles.yearItemTextActive
-                      ]}>
-                        {year}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </View>
-            </TouchableOpacity>
-          )}
-        </SafeAreaView>
-      </GestureHandlerRootView>
-    );
-  }
-
   // Main Feed View
   return (
     <GestureHandlerRootView style={styles.container}>
       <StatusBar barStyle="dark-content" />
       <SafeAreaView style={styles.safeArea}>
+
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity
-            style={styles.categoryBtn}
-            onPress={() => setShowCategoryPicker(true)}
-          >
+          <TouchableOpacity style={styles.categoryBtn} onPress={() => setShowCategoryPicker(true)}>
             <Text style={styles.categoryBtnText}>
-              {selectedCategories.size === CATEGORIES.length 
-                ? 'All' 
-                : `${selectedCategories.size} selected`}
+              {selectedCategories.size === CATEGORIES.length ? 'All' : `${selectedCategories.size} selected`}
             </Text>
             <Ionicons name="chevron-down" size={16} color="#000" />
           </TouchableOpacity>
-
           <View style={styles.headerRight}>
-            <TouchableOpacity
-              style={[styles.todayBtn, todayOnly && styles.todayBtnActive]}
-              onPress={() => { setTodayOnly(prev => !prev); setAbstractPart(0); }}
-            >
-              <Text style={[styles.todayBtnText, todayOnly && styles.todayBtnTextActive]}>Today</Text>
+            <TouchableOpacity style={[styles.dateBtn, !isToday && styles.dateBtnActive]} onPress={() => { setDatePickerMode('months'); setShowDatePicker(true); }}>
+              <Ionicons name="calendar-outline" size={14} color={isToday ? '#000' : '#fff'} />
+              <Text style={[styles.dateBtnText, !isToday && styles.dateBtnTextActive]}>{dateLabel}</Text>
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setCurrentView('foryou')}
-            >
-              <Ionicons name="sparkles" size={22} color="#000" />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => { fetchLikedPapers(); setCurrentView('likes'); }}
-            >
+            <TouchableOpacity style={styles.iconBtn} onPress={() => { fetchLikedPapers(); setCurrentView('likes'); }}>
               <Ionicons name="heart" size={22} color="#000" />
               {likedPapers.size > 0 && (
-                <View style={styles.badge}>
-                  <Text style={styles.badgeText}>{likedPapers.size}</Text>
-                </View>
+                <View style={styles.badge}><Text style={styles.badgeText}>{likedPapers.size}</Text></View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.iconBtn}
-              onPress={() => setCurrentView('settings')}
-            >
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setCurrentView('settings')}>
               <Ionicons name="person-outline" size={22} color="#000" />
             </TouchableOpacity>
           </View>
         </View>
 
-        {/* Main Card */}
+        {/* Card Area */}
         <GestureDetector gesture={panGesture}>
           <Animated.View style={[styles.cardArea, animatedCardStyle]}>
-            {todayOnly && allTodaySeen ? (
+            {allPapersSeen ? (
               <View style={styles.emptyCard}>
-                <Ionicons name="checkmark-circle-outline" size={48} color="#ccc" />
-                <Text style={styles.emptyCardText}>You've seen all of today's papers</Text>
-                <TouchableOpacity
-                  style={styles.disableTodayBtn}
-                  onPress={() => { setTodayOnly(false); setAbstractPart(0); }}
-                >
-                  <Text style={styles.disableTodayBtnText}>Show more recent papers</Text>
+                <Ionicons name="checkmark-circle-outline" size={52} color="#ccc" />
+                <Text style={styles.emptyCardTitle}>
+                  {isToday ? "You've seen all of today's papers!" : 'No more papers'}
+                </Text>
+                {isToday && (
+                  <Text style={styles.emptyCardSubtext}>
+                    Explore papers from a specific month or date range to discover more
+                  </Text>
+                )}
+                <TouchableOpacity style={styles.browseBtn} onPress={() => { setDatePickerMode('months'); setShowDatePicker(true); }}>
+                  <Ionicons name="calendar-outline" size={18} color="#fff" />
+                  <Text style={styles.browseBtnText}>Browse by date</Text>
                 </TouchableOpacity>
+                {!isToday && hasMore && (
+                  <TouchableOpacity style={[styles.browseBtn, { marginTop: 10, backgroundColor: '#666' }]}
+                    onPress={() => fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo, olderStartRef.current, true)}>
+                    <Text style={styles.browseBtnText}>Load more</Text>
+                  </TouchableOpacity>
+                )}
               </View>
-            ) : todayOnly && displayPapers.length === 0 && papers.length > 0 && !loading ? (
-              <View style={styles.emptyCard}>
-                <Ionicons name="calendar-outline" size={48} color="#ccc" />
-                <Text style={styles.emptyCardText}>No new papers today in these categories</Text>
-                <TouchableOpacity
-                  style={styles.disableTodayBtn}
-                  onPress={() => { setTodayOnly(false); setAbstractPart(0); }}
-                >
-                  <Text style={styles.disableTodayBtnText}>Show all recent papers</Text>
-                </TouchableOpacity>
-              </View>
-            ) : displayPapers.length === 0 && !loading ? (
+            ) : noPapersFound ? (
               <View style={styles.emptyCard}>
                 <Ionicons name="search-outline" size={48} color="#ccc" />
-                <Text style={styles.emptyCardText}>No papers found</Text>
-                <Text style={styles.emptyCardSubtext}>Try selecting different categories</Text>
+                <Text style={styles.emptyCardTitle}>No papers found</Text>
+                <Text style={styles.emptyCardSubtext}>Try selecting different categories or a different date</Text>
               </View>
-            ) : currentPaper && (
+            ) : currentPaper ? (
               <View style={styles.card}>
                 {currentPaper.is_new && (
-                  <View style={styles.newBadge}>
-                    <Text style={styles.newBadgeText}>NEW</Text>
-                  </View>
+                  <View style={styles.newBadge}><Text style={styles.newBadgeText}>NEW</Text></View>
                 )}
-
-                {currentPaper.is_recommendation && (
-                  <View style={styles.recBadge}>
-                    <Text style={styles.recBadgeText}>For You</Text>
-                  </View>
-                )}
-
                 <View style={styles.cardContent}>
                   {abstractPart === 0 ? (
                     <>
@@ -873,9 +600,7 @@ export default function Index() {
                       )}
                       {currentPaper.comment && (
                         <View style={styles.commentBadge}>
-                          <Text style={styles.commentText} numberOfLines={2}>
-                            {currentPaper.comment}
-                          </Text>
+                          <Text style={styles.commentText} numberOfLines={2}>{currentPaper.comment}</Text>
                         </View>
                       )}
                       <Text style={styles.paperDate}>{currentPaper.published}</Text>
@@ -886,49 +611,28 @@ export default function Index() {
                     </>
                   ) : (
                     <View style={styles.abstractContainer}>
-                      <Text style={styles.abstractPartLabel}>
-                        Part {abstractPart}/{abstractParts.length}
-                      </Text>
-                      <Text style={styles.abstractText} numberOfLines={12}>
-                        {abstractParts[abstractPart - 1] || ''}
-                      </Text>
+                      <Text style={styles.abstractPartLabel}>Part {abstractPart}/{abstractParts.length}</Text>
+                      <Text style={styles.abstractText} numberOfLines={12}>{abstractParts[abstractPart - 1] || ''}</Text>
                     </View>
                   )}
                 </View>
-
                 <View style={styles.dots}>
                   {Array.from({ length: totalParts }, (_, i) => (
                     <View key={i} style={[styles.dot, abstractPart === i && styles.dotActive]} />
                   ))}
                 </View>
-
-                <Text style={styles.counter}>
-                  {todayOnly
-                    ? `${todayPapers.length - displayPapers.length} / ${todayPapers.length} today`
-                    : `${displayPapers.length} remaining`}
-                </Text>
+                <Text style={styles.counter}>{currentIndex + 1} / {papers.length}{hasMore ? '+' : ''}</Text>
               </View>
-            )}
+            ) : null}
           </Animated.View>
         </GestureDetector>
 
-        {/* Bottom Actions */}
-
+        {/* Bottom Bar */}
         <View style={styles.bottomBar}>
-          <View style={styles.swipeHints}>
-            <Text style={styles.hintText}>
-              {abstractPart === 0
-                ? displayPapers.length <= 1 && !todayOnly
-                  ? 'Swipe ↑ to refresh'
-                  : `Swipe ← for abstract (${abstractParts.length} parts)`
-                : 'Swipe → to go back'}
-            </Text>
-          </View>
-          
-          <TouchableOpacity
-            style={styles.likeBtn}
-            onPress={() => currentPaper && toggleLike(currentPaper)}
-          >
+          <Text style={styles.hintText}>
+            {abstractPart === 0 ? 'Swipe ↑↓ to navigate · ← for abstract' : 'Swipe → back · ↑↓ to change paper'}
+          </Text>
+          <TouchableOpacity style={styles.likeBtn} onPress={() => currentPaper && toggleLike(currentPaper)}>
             <Ionicons
               name={currentPaper && likedPapers.has(currentPaper.id) ? 'heart' : 'heart-outline'}
               size={28}
@@ -937,65 +641,117 @@ export default function Index() {
           </TouchableOpacity>
         </View>
 
-        {/* Category Picker Modal */}
+        {/* Category Modal */}
         {showCategoryPicker && (
-          <TouchableOpacity
-            style={styles.modalOverlay}
-            activeOpacity={1}
-            onPress={() => {
-              setShowCategoryPicker(false);
-              fetchPapers(selectedCategories);
-            }}
-          >
-            <View style={styles.categoryModal}>
-              <Text style={styles.categoryModalTitle}>Select Categories</Text>
-              <Text style={styles.categoryModalSub}>Tap to select multiple</Text>
-              
-              <View style={styles.categoryGrid}>
-                {CATEGORIES.map(cat => (
-                  <TouchableOpacity
-                    key={cat.key}
-                    style={[
-                      styles.categoryCheckbox,
-                      selectedCategories.has(cat.key) && styles.categoryCheckboxActive
-                    ]}
-                    onPress={() => toggleCategory(cat.key)}
-                  >
-                    <View style={[
-                      styles.checkbox,
-                      selectedCategories.has(cat.key) && styles.checkboxActive
-                    ]}>
-                      {selectedCategories.has(cat.key) && (
-                        <Ionicons name="checkmark" size={14} color="#fff" />
-                      )}
-                    </View>
-                    <Text style={[
-                      styles.categoryCheckboxText,
-                      selectedCategories.has(cat.key) && styles.categoryCheckboxTextActive
-                    ]}>
-                      {cat.label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1}
+            onPress={() => { setShowCategoryPicker(false); fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo); }}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+              <View style={styles.categoryModal}>
+                <Text style={styles.categoryModalTitle}>Select Categories</Text>
+                <Text style={styles.categoryModalSub}>Tap to select multiple</Text>
+                <View style={styles.categoryGrid}>
+                  {CATEGORIES.map(cat => (
+                    <TouchableOpacity key={cat.key}
+                      style={[styles.categoryCheckbox, selectedCategories.has(cat.key) && styles.categoryCheckboxActive]}
+                      onPress={() => toggleCategory(cat.key)}>
+                      <View style={[styles.checkbox, selectedCategories.has(cat.key) && styles.checkboxActive]}>
+                        {selectedCategories.has(cat.key) && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      </View>
+                      <Text style={[styles.categoryCheckboxText, selectedCategories.has(cat.key) && styles.categoryCheckboxTextActive]}>{cat.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity style={styles.applyBtn} onPress={() => { setShowCategoryPicker(false); fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo); }}>
+                  <Text style={styles.applyBtnText}>Apply</Text>
+                </TouchableOpacity>
               </View>
-
-              <TouchableOpacity 
-                style={styles.applyBtn}
-                onPress={() => {
-                  setShowCategoryPicker(false);
-                  fetchPapers(selectedCategories);
-                }}
-              >
-                <Text style={styles.applyBtnText}>Apply</Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </TouchableOpacity>
         )}
 
-        {(loadingMore || refreshing) && (
-          <View style={styles.loadingMore}>
+        {/* Date Picker Modal */}
+        {showDatePicker && (
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => { setShowDatePicker(false); setDatePickerMode('months'); }}>
+            <TouchableOpacity activeOpacity={1} onPress={() => {}}>
+              <View style={styles.dateModal}>
+
+                {datePickerMode === 'months' ? (
+                  <>
+                    <Text style={styles.dateModalTitle}>Browse by Date</Text>
+
+                    {/* Today */}
+                    <TouchableOpacity
+                      style={[styles.todayOption, isToday && styles.todayOptionActive]}
+                      onPress={() => { setSelectedYear(null); setSelectedMonth(null); setCustomFrom(null); setCustomTo(null); setShowDatePicker(false); }}>
+                      <Text style={[styles.todayOptionText, isToday && styles.todayOptionTextActive]}>Today</Text>
+                    </TouchableOpacity>
+
+                    {/* Year nav */}
+                    <View style={styles.yearNav}>
+                      <TouchableOpacity onPress={() => setPickerYear(y => Math.max(1990, y - 1))} style={styles.yearNavArrow}>
+                        <Ionicons name="chevron-back" size={20} color="#000" />
+                      </TouchableOpacity>
+                      <Text style={styles.yearNavText}>{pickerYear}</Text>
+                      <TouchableOpacity onPress={() => setPickerYear(y => Math.min(now.getFullYear(), y + 1))} style={styles.yearNavArrow}>
+                        <Ionicons name="chevron-forward" size={20} color="#000" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Month grid */}
+                    <View style={styles.monthGrid}>
+                      {MONTH_NAMES.map((m, i) => {
+                        const active = selectedYear === pickerYear && selectedMonth === i + 1 && !customFrom;
+                        return (
+                          <TouchableOpacity key={i} style={[styles.monthCell, active && styles.monthCellActive]}
+                            onPress={() => { setSelectedYear(pickerYear); setSelectedMonth(i + 1); setCustomFrom(null); setCustomTo(null); setShowDatePicker(false); }}>
+                            <Text style={[styles.monthCellText, active && styles.monthCellTextActive]}>{m}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+
+                    {/* Custom range */}
+                    <TouchableOpacity style={[styles.customRangeBtn, customFrom && styles.customRangeBtnActive]} onPress={() => setDatePickerMode('custom')}>
+                      <Ionicons name="calendar-outline" size={15} color={customFrom ? '#fff' : '#666'} />
+                      <Text style={[styles.customRangeBtnText, customFrom && styles.customRangeBtnTextActive]}>
+                        {customFrom ? `${customFrom.slice(6)}/${MONTH_NAMES[parseInt(customFrom.slice(4,6))-1]}/${customFrom.slice(0,4)} – ${customTo!.slice(6)}/${MONTH_NAMES[parseInt(customTo!.slice(4,6))-1]}/${customTo!.slice(0,4)}` : 'Custom range'}
+                      </Text>
+                    </TouchableOpacity>
+                  </>
+                ) : (
+                  <>
+                    <TouchableOpacity style={styles.backRow} onPress={() => setDatePickerMode('months')}>
+                      <Ionicons name="arrow-back" size={20} color="#000" />
+                      <Text style={styles.backRowText}>Custom range</Text>
+                    </TouchableOpacity>
+
+                    <Text style={styles.rangeLabel}>From</Text>
+                    <View style={styles.dateRow}>
+                      <DateSpinner value={fromDay} min={1} max={31} onChange={setFromDay} label="Day" />
+                      <DateSpinner value={fromMonth} min={1} max={12} onChange={setFromMonth} label="Month" fmt={v => MONTH_NAMES[v-1]} />
+                      <DateSpinner value={fromYear} min={1990} max={now.getFullYear()} onChange={setFromYear} label="Year" fmt={v => String(v)} />
+                    </View>
+
+                    <Text style={[styles.rangeLabel, { marginTop: 16 }]}>To</Text>
+                    <View style={styles.dateRow}>
+                      <DateSpinner value={toDay} min={1} max={31} onChange={setToDay} label="Day" />
+                      <DateSpinner value={toMonth} min={1} max={12} onChange={setToMonth} label="Month" fmt={v => MONTH_NAMES[v-1]} />
+                      <DateSpinner value={toYear} min={1990} max={now.getFullYear()} onChange={setToYear} label="Year" fmt={v => String(v)} />
+                    </View>
+
+                    <TouchableOpacity style={[styles.applyBtn, { marginTop: 20 }]} onPress={applyCustomRange}>
+                      <Text style={styles.applyBtnText}>Apply</Text>
+                    </TouchableOpacity>
+                  </>
+                )}
+              </View>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        )}
+
+        {loadingMore && (
+          <View style={styles.loadingMoreOverlay}>
             <ActivityIndicator size="small" color="#000" />
-            {refreshing && <Text style={styles.refreshingText}>Updating papers...</Text>}
           </View>
         )}
       </SafeAreaView>
@@ -1008,29 +764,30 @@ const styles = StyleSheet.create({
   safeArea: { flex: 1 },
   loadingContainer: { flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 12, color: '#999', fontSize: 14 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  headerTitle: { fontSize: 17, fontWeight: '600', color: '#000' },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+
+  // Header
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 12 },
   categoryBtn: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   categoryBtnText: { fontSize: 17, fontWeight: '600', color: '#000' },
   iconBtn: { position: 'relative', padding: 4 },
-  todayBtn: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: '#ccc' },
-  todayBtnActive: { backgroundColor: '#000', borderColor: '#000' },
-  todayBtnText: { fontSize: 13, fontWeight: '600', color: '#666' },
-  todayBtnTextActive: { color: '#fff' },
+  dateBtn: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 12, borderWidth: 1, borderColor: '#ddd' },
+  dateBtnActive: { backgroundColor: '#000', borderColor: '#000' },
+  dateBtnText: { fontSize: 13, fontWeight: '600', color: '#000' },
+  dateBtnTextActive: { color: '#fff' },
   badge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#000', borderRadius: 8, minWidth: 16, height: 16, justifyContent: 'center', alignItems: 'center' },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '600' },
+
+  // Card
   cardArea: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
   card: { width: '100%', height: '100%', backgroundColor: '#fafafa', borderRadius: 16, padding: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#e0e0e0', overflow: 'hidden' },
-  emptyCard: { width: '100%', height: '100%', backgroundColor: '#fafafa', borderRadius: 16, padding: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#e0e0e0', overflow: 'hidden' },
-  emptyCardText: { marginTop: 16, color: '#999', fontSize: 16, textAlign: 'center' },
-  emptyCardSubtext: { marginTop: 8, color: '#ccc', fontSize: 14, textAlign: 'center' },
-  disableTodayBtn: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#000', borderRadius: 20 },
-  disableTodayBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  emptyCard: { width: '100%', height: '100%', backgroundColor: '#fafafa', borderRadius: 16, padding: 32, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#e0e0e0' },
+  emptyCardTitle: { marginTop: 16, color: '#555', fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  emptyCardSubtext: { marginTop: 10, color: '#999', fontSize: 14, textAlign: 'center', lineHeight: 20, paddingHorizontal: 8 },
+  browseBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 24, paddingVertical: 12, paddingHorizontal: 24, backgroundColor: '#000', borderRadius: 24 },
+  browseBtnText: { color: '#fff', fontSize: 15, fontWeight: '600' },
   newBadge: { position: 'absolute', top: 16, left: 16, backgroundColor: '#000', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   newBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
-  recBadge: { position: 'absolute', top: 16, right: 16, backgroundColor: '#f0f0f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
-  recBadgeText: { color: '#666', fontSize: 10, fontWeight: '600' },
   cardContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, width: '100%' },
   paperTitle: { fontSize: 20, fontWeight: '700', color: '#000', textAlign: 'center', lineHeight: 28 },
   paperAuthor: { marginTop: 6, fontSize: 13, color: '#666', fontStyle: 'italic' },
@@ -1046,12 +803,18 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#ddd' },
   dotActive: { backgroundColor: '#000' },
   counter: { position: 'absolute', bottom: 16, right: 16, fontSize: 12, color: '#bbb' },
+
+  // Bottom bar
   bottomBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 16, borderTopWidth: 1, borderTopColor: '#f0f0f0' },
-  swipeHints: { flex: 1 },
-  hintText: { fontSize: 13, color: '#999' },
+  hintText: { fontSize: 12, color: '#bbb', flex: 1 },
   likeBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#f5f5f5', justifyContent: 'center', alignItems: 'center' },
+  loadingMoreOverlay: { position: 'absolute', bottom: 90, right: 20 },
+
+  // Modals
   modalOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  categoryModal: { backgroundColor: '#fff', borderRadius: 16, padding: 24, width: '85%', maxWidth: 340 },
+
+  // Category modal
+  categoryModal: { backgroundColor: '#fff', borderRadius: 16, padding: 24, width: 320 },
   categoryModalTitle: { fontSize: 18, fontWeight: '700', color: '#000', textAlign: 'center' },
   categoryModalSub: { fontSize: 13, color: '#999', textAlign: 'center', marginTop: 4, marginBottom: 20 },
   categoryGrid: { gap: 10 },
@@ -1061,12 +824,40 @@ const styles = StyleSheet.create({
   checkboxActive: { backgroundColor: '#000', borderColor: '#000' },
   categoryCheckboxText: { fontSize: 15, color: '#666' },
   categoryCheckboxTextActive: { color: '#000', fontWeight: '600' },
-  applyBtn: { marginTop: 20, paddingVertical: 14, backgroundColor: '#000', borderRadius: 10, alignItems: 'center' },
+  applyBtn: { paddingVertical: 14, backgroundColor: '#000', borderRadius: 10, alignItems: 'center' },
   applyBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  loadingMore: { position: 'absolute', bottom: 100, alignSelf: 'center', alignItems: 'center', gap: 4 },
-  refreshingText: { fontSize: 12, color: '#666', marginTop: 4 },
+
+  // Date modal
+  dateModal: { backgroundColor: '#fff', borderRadius: 16, padding: 20, width: 320 },
+  dateModalTitle: { fontSize: 17, fontWeight: '700', color: '#000', textAlign: 'center', marginBottom: 14 },
+  todayOption: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10, borderWidth: 1, borderColor: '#e0e0e0', alignItems: 'center', marginBottom: 14 },
+  todayOptionActive: { backgroundColor: '#000', borderColor: '#000' },
+  todayOptionText: { fontSize: 15, fontWeight: '600', color: '#444' },
+  todayOptionTextActive: { color: '#fff' },
+  yearNav: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 12, gap: 20 },
+  yearNavArrow: { padding: 4 },
+  yearNavText: { fontSize: 18, fontWeight: '700', color: '#000', minWidth: 60, textAlign: 'center' },
+  monthGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'space-between', marginBottom: 14 },
+  monthCell: { width: '30%', paddingVertical: 9, borderRadius: 8, borderWidth: 1, borderColor: '#e0e0e0', alignItems: 'center' },
+  monthCellActive: { backgroundColor: '#000', borderColor: '#000' },
+  monthCellText: { fontSize: 13, color: '#555', fontWeight: '500' },
+  monthCellTextActive: { color: '#fff', fontWeight: '700' },
+  customRangeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 14, borderRadius: 10, borderWidth: 1, borderColor: '#ddd', justifyContent: 'center' },
+  customRangeBtnActive: { backgroundColor: '#000', borderColor: '#000' },
+  customRangeBtnText: { fontSize: 13, color: '#666' },
+  customRangeBtnTextActive: { color: '#fff' },
+  backRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20 },
+  backRowText: { fontSize: 16, fontWeight: '700', color: '#000' },
+  rangeLabel: { fontSize: 13, fontWeight: '600', color: '#999', marginBottom: 8 },
+  dateRow: { flexDirection: 'row', gap: 8, justifyContent: 'center' },
+  spinner: { alignItems: 'center', flex: 1 },
+  spinnerLabel: { fontSize: 11, color: '#999', marginBottom: 4 },
+  spinnerArrow: { padding: 4 },
+  spinnerValue: { fontSize: 15, fontWeight: '700', color: '#000', minWidth: 44, textAlign: 'center', paddingVertical: 4 },
+
+  // Likes
   likesList: { flex: 1, padding: 16 },
-  emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 100 },
+  emptyState: { alignItems: 'center', paddingTop: 100 },
   emptyText: { marginTop: 12, fontSize: 16, color: '#999' },
   likedCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#fafafa', borderRadius: 12, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: '#f0f0f0' },
   likedContent: { flex: 1, marginRight: 12 },
@@ -1075,15 +866,10 @@ const styles = StyleSheet.create({
   likedDate: { fontSize: 12, color: '#999', marginTop: 4 },
   exportBtn: { marginHorizontal: 16, marginBottom: 16, paddingVertical: 14, backgroundColor: '#000', borderRadius: 12, alignItems: 'center' },
   exportBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+
+  // Settings
+  headerTitle: { fontSize: 17, fontWeight: '600', color: '#000' },
   settingsContent: { flex: 1, padding: 16 },
-  userCard: { alignItems: 'center', paddingVertical: 24 },
-  userPicture: { width: 80, height: 80, borderRadius: 40, marginBottom: 12 },
-  userName: { fontSize: 20, fontWeight: '600', color: '#000' },
-  userEmail: { fontSize: 14, color: '#666', marginTop: 4 },
-  logoutBtn: { marginTop: 16, paddingHorizontal: 24, paddingVertical: 10, backgroundColor: '#f5f5f5', borderRadius: 8 },
-  logoutBtnText: { fontSize: 14, color: '#666' },
-  loginBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, backgroundColor: '#000', borderRadius: 12 },
-  loginBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   divider: { height: 1, backgroundColor: '#f0f0f0', marginVertical: 24 },
   supportCard: { borderRadius: 14, backgroundColor: '#000', marginBottom: 8 },
   supportCardContent: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 18 },
@@ -1093,17 +879,4 @@ const styles = StyleSheet.create({
   settingsItemContent: { flex: 1, marginLeft: 12 },
   settingsItemTitle: { fontSize: 16, color: '#000' },
   settingsItemSub: { fontSize: 13, color: '#999', marginTop: 2 },
-  // Year selector
-  yearSelector: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 16, gap: 16, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
-  yearBtn: { alignItems: 'center', paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#f5f5f5', borderRadius: 10 },
-  yearLabel: { fontSize: 11, color: '#999', marginBottom: 2 },
-  yearValue: { fontSize: 18, fontWeight: '700', color: '#000' },
-  yearDash: { fontSize: 20, color: '#ccc' },
-  yearModal: { backgroundColor: '#fff', borderRadius: 16, padding: 20, width: '70%', maxWidth: 280, maxHeight: '60%' },
-  yearModalTitle: { fontSize: 17, fontWeight: '600', color: '#000', textAlign: 'center', marginBottom: 16 },
-  yearList: { maxHeight: 300 },
-  yearItem: { paddingVertical: 12, paddingHorizontal: 16, borderRadius: 8 },
-  yearItemActive: { backgroundColor: '#f5f5f5' },
-  yearItemText: { fontSize: 16, color: '#666', textAlign: 'center' },
-  yearItemTextActive: { color: '#000', fontWeight: '600' },
 });
