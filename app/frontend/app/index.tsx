@@ -783,7 +783,16 @@ export default function Index() {
                 <Text style={styles.emptyCardText}>
                   {todayOnly ? "You've seen all of today's papers" : "You've seen all available papers"}
                 </Text>
-                <Text style={styles.emptyCardSubtext}>Check back tomorrow for new listings</Text>
+                {todayOnly ? (
+                  <TouchableOpacity
+                    style={styles.disableTodayBtn}
+                    onPress={() => { setTodayOnly(false); setCurrentIndex(0); setAbstractPart(0); }}
+                  >
+                    <Text style={styles.disableTodayBtnText}>Disable Today filter to see more</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <Text style={styles.emptyCardSubtext}>Check back tomorrow for new listings</Text>
+                )}
               </View>
             ) : currentPaper && (
               <View style={styles.card}>
@@ -803,6 +812,11 @@ export default function Index() {
                   {abstractPart === 0 ? (
                     <>
                       <Text style={styles.paperTitle}>{cleanLatex(currentPaper.title)}</Text>
+                      {currentPaper.authors?.length > 0 && (
+                        <Text style={styles.paperAuthor}>
+                          {currentPaper.authors[0]}{currentPaper.authors.length > 1 ? ` +${currentPaper.authors.length - 1}` : ''}
+                        </Text>
+                      )}
                       {currentPaper.comment && (
                         <View style={styles.commentBadge}>
                           <Text style={styles.commentText} numberOfLines={2}>
@@ -955,12 +969,15 @@ const styles = StyleSheet.create({
   emptyCard: { width: '100%', height: '100%', backgroundColor: '#fafafa', borderRadius: 16, padding: 24, justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: '#e0e0e0', overflow: 'hidden' },
   emptyCardText: { marginTop: 16, color: '#999', fontSize: 16, textAlign: 'center' },
   emptyCardSubtext: { marginTop: 8, color: '#ccc', fontSize: 14, textAlign: 'center' },
+  disableTodayBtn: { marginTop: 16, paddingHorizontal: 20, paddingVertical: 10, backgroundColor: '#000', borderRadius: 20 },
+  disableTodayBtnText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   newBadge: { position: 'absolute', top: 16, left: 16, backgroundColor: '#000', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   newBadgeText: { color: '#fff', fontSize: 10, fontWeight: '700' },
   recBadge: { position: 'absolute', top: 16, right: 16, backgroundColor: '#f0f0f0', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 4 },
   recBadgeText: { color: '#666', fontSize: 10, fontWeight: '600' },
   cardContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 20, width: '100%' },
   paperTitle: { fontSize: 20, fontWeight: '700', color: '#000', textAlign: 'center', lineHeight: 28 },
+  paperAuthor: { marginTop: 6, fontSize: 13, color: '#666', fontStyle: 'italic' },
   paperDate: { marginTop: 16, fontSize: 14, color: '#999' },
   commentBadge: { marginTop: 12, backgroundColor: '#f0f0f0', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, alignSelf: 'center' },
   commentText: { fontSize: 12, color: '#666', textAlign: 'center', fontStyle: 'italic' },
