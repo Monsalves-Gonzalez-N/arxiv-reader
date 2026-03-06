@@ -706,8 +706,8 @@ async def get_for_you_papers(
     
     try:
         # Get recent paper IDs from arXiv new submissions page (same as feed)
-        recent_ids = await get_recent_paper_ids(category, max_results=100)
-        
+        recent_ids, announced_date = await get_recent_paper_ids(category, max_results=100)
+
         if recent_ids:
             # Get full paper details
             all_papers = await get_papers_by_ids(recent_ids, category)
@@ -779,7 +779,7 @@ app.include_router(api_router)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_credentials=True,
+    allow_credentials=False,
     allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
