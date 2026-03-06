@@ -52,6 +52,50 @@ const CATEGORIES = [
 
 const YEARS = Array.from({ length: 36 }, (_, i) => 2025 - i); // 2025 to 1990
 
+function cleanLatex(text: string): string {
+  if (!text) return text;
+  const replacements: [RegExp, string][] = [
+    // Greek lowercase
+    [/\\alpha/g,'α'],[/\\beta/g,'β'],[/\\gamma/g,'γ'],[/\\delta/g,'δ'],
+    [/\\varepsilon/g,'ε'],[/\\epsilon/g,'ε'],[/\\zeta/g,'ζ'],[/\\eta/g,'η'],
+    [/\\vartheta/g,'ϑ'],[/\\theta/g,'θ'],[/\\iota/g,'ι'],[/\\kappa/g,'κ'],
+    [/\\lambda/g,'λ'],[/\\mu/g,'μ'],[/\\nu/g,'ν'],[/\\xi/g,'ξ'],
+    [/\\varpi/g,'ϖ'],[/\\pi/g,'π'],[/\\varrho/g,'ϱ'],[/\\rho/g,'ρ'],
+    [/\\varsigma/g,'ς'],[/\\sigma/g,'σ'],[/\\tau/g,'τ'],[/\\upsilon/g,'υ'],
+    [/\\varphi/g,'φ'],[/\\phi/g,'φ'],[/\\chi/g,'χ'],[/\\psi/g,'ψ'],[/\\omega/g,'ω'],
+    // Greek uppercase
+    [/\\Gamma/g,'Γ'],[/\\Delta/g,'Δ'],[/\\Theta/g,'Θ'],[/\\Lambda/g,'Λ'],
+    [/\\Xi/g,'Ξ'],[/\\Pi/g,'Π'],[/\\Sigma/g,'Σ'],[/\\Upsilon/g,'Υ'],
+    [/\\Phi/g,'Φ'],[/\\Psi/g,'Ψ'],[/\\Omega/g,'Ω'],
+    // Math symbols
+    [/\\odot/g,'⊙'],[/\\oplus/g,'⊕'],[/\\otimes/g,'⊗'],[/\\cdots/g,'⋯'],
+    [/\\ldots/g,'…'],[/\\cdot/g,'·'],[/\\times/g,'×'],[/\\div/g,'÷'],
+    [/\\pm/g,'±'],[/\\mp/g,'∓'],[/\\leq/g,'≤'],[/\\geq/g,'≥'],
+    [/\\neq/g,'≠'],[/\\lesssim/g,'≲'],[/\\gtrsim/g,'≳'],[/\\ll/g,'≪'],
+    [/\\gg/g,'≫'],[/\\approx/g,'≈'],[/\\simeq/g,'≃'],[/\\equiv/g,'≡'],
+    [/\\sim/g,'~'],[/\\propto/g,'∝'],[/\\infty/g,'∞'],[/\\partial/g,'∂'],
+    [/\\nabla/g,'∇'],[/\\rightarrow/g,'→'],[/\\leftarrow/g,'←'],
+    [/\\leftrightarrow/g,'↔'],[/\\Rightarrow/g,'⇒'],[/\\to/g,'→'],
+    [/\\in\b/g,'∈'],[/\\notin/g,'∉'],[/\\subset/g,'⊂'],[/\\supset/g,'⊃'],
+    [/\\cup/g,'∪'],[/\\cap/g,'∩'],[/\\forall/g,'∀'],[/\\exists/g,'∃'],
+    // sqrt
+    [/\\sqrt\{([^}]+)\}/g,'√($1)'],[/\\sqrt/g,'√'],
+    // Text formatting — extract content
+    [/\\(?:text|mathrm|mathbf|mathit|mathcal|textbf|textit|emph)\{([^}]+)\}/g,'$1'],
+    // sub/superscript
+    [/\^\{([^}]+)\}/g,'^($1)'],[/_\{([^}]+)\}/g,'_($1)'],
+    [/\^([A-Za-z0-9])/g,'^$1'],[/_([A-Za-z0-9])/g,'_$1'],
+    // Remove $ markers
+    [/\$\$/g,''],[/\$/g,''],
+    // Remaining commands — strip braces, keep content
+    [/\\[a-zA-Z]+\{([^}]*)\}/g,'$1'],[/\\[a-zA-Z]+/g,''],
+    [/[{}]/g,''],[/\s+/g,' '],
+  ];
+  let result = text;
+  for (const [pattern, replacement] of replacements) result = result.replace(pattern, replacement);
+  return result.trim();
+}
+
 function splitAbstract(abstract: string): string[] {
   if (!abstract) return [''];
   const sentences = abstract.match(/[^.!?]+[.!?]+/g) || [abstract];
@@ -75,6 +119,7 @@ export default function Index() {
   const [deviceId, setDeviceId] = useState<string>('');
   const seenIds = useRef<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
+  const [allPapersSeen, setAllPapersSeen] = useState(false);
 
   const [papers, setPapers] = useState<Paper[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -108,7 +153,7 @@ export default function Index() {
 
   const currentPaper = currentView === 'foryou' ? forYouPapers[forYouIndex] : displayPapers[currentIndex];
   const abstractParts = useMemo(() => 
-    currentPaper ? splitAbstract(currentPaper.abstract) : [''],
+    currentPaper ? splitAbstract(cleanLatex(currentPaper.abstract)) : [''],
     [currentPaper?.abstract]
   );
   const totalParts = abstractParts.length + 1;
@@ -140,7 +185,7 @@ export default function Index() {
     }
   };
 
-  const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false, isRefresh: boolean = false) => {
+  const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false) => {
     try {
       if (start === 0 && !append) setLoading(true);
       else setLoadingMore(true);
@@ -158,19 +203,20 @@ export default function Index() {
       const data = await response.json();
       const fetched: Paper[] = data.papers || [];
 
-      if (isRefresh) {
-        seenIds.current.clear();
-      }
-
       const fresh = fetched.filter(p => !seenIds.current.has(p.id));
       fresh.forEach(p => seenIds.current.add(p.id));
 
-      if (append) {
-        setPapers(prev => [...prev, ...fresh]);
+      if (fresh.length === 0 && !append) {
+        setAllPapersSeen(true);
       } else {
-        setPapers(fresh);
-        setCurrentIndex(0);
-        setAbstractPart(0);
+        setAllPapersSeen(false);
+        if (append) {
+          setPapers(prev => [...prev, ...fresh]);
+        } else {
+          setPapers(fresh);
+          setCurrentIndex(0);
+          setAbstractPart(0);
+        }
       }
       setHasMore(data.has_more ?? false);
     } catch (error) {
@@ -233,6 +279,8 @@ export default function Index() {
   }, [currentView, yearFrom, yearTo]);
 
   const toggleCategory = (categoryKey: string) => {
+    seenIds.current.clear();
+    setAllPapersSeen(false);
     setSelectedCategories(prev => {
       const newSet = new Set(prev);
       if (newSet.has(categoryKey)) {
@@ -319,10 +367,10 @@ export default function Index() {
         if (!todayOnly && currentIndex >= papers.length - 5 && hasMore && !loadingMore) {
           fetchPapers(selectedCategories, papers.length, true);
         }
-      } else if (!loadingMore) {
-        // At the last paper — refresh
+      } else if (!loadingMore && !refreshing) {
+        // At the last paper — try fetching new papers
         setRefreshing(true);
-        fetchPapers(selectedCategories, 0, false, true);
+        fetchPapers(selectedCategories, 0, false);
       }
     }
   }, [currentView, currentIndex, forYouIndex, displayPapers, papers, forYouPapers, hasMore, loadingMore, selectedCategories, fetchPapers, todayOnly]);
@@ -564,7 +612,7 @@ export default function Index() {
                     <View style={styles.cardContent}>
                       {abstractPart === 0 ? (
                         <>
-                          <Text style={styles.paperTitle}>{currentPaper.title}</Text>
+                          <Text style={styles.paperTitle}>{cleanLatex(currentPaper.title)}</Text>
                           {currentPaper.comment && (
                             <View style={styles.commentBadge}>
                               <Text style={styles.commentText} numberOfLines={2}>
@@ -729,7 +777,15 @@ export default function Index() {
         {/* Main Card */}
         <GestureDetector gesture={panGesture}>
           <Animated.View style={[styles.cardArea, animatedCardStyle]}>
-            {currentPaper && (
+            {allPapersSeen || (!currentPaper && !loading) ? (
+              <View style={styles.emptyCard}>
+                <Ionicons name="checkmark-circle-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyCardText}>
+                  {todayOnly ? "You've seen all of today's papers" : "You've seen all available papers"}
+                </Text>
+                <Text style={styles.emptyCardSubtext}>Check back tomorrow for new listings</Text>
+              </View>
+            ) : currentPaper && (
               <View style={styles.card}>
                 {currentPaper.is_new && (
                   <View style={styles.newBadge}>
@@ -746,7 +802,7 @@ export default function Index() {
                 <View style={styles.cardContent}>
                   {abstractPart === 0 ? (
                     <>
-                      <Text style={styles.paperTitle}>{currentPaper.title}</Text>
+                      <Text style={styles.paperTitle}>{cleanLatex(currentPaper.title)}</Text>
                       {currentPaper.comment && (
                         <View style={styles.commentBadge}>
                           <Text style={styles.commentText} numberOfLines={2}>
@@ -787,6 +843,7 @@ export default function Index() {
         </GestureDetector>
 
         {/* Bottom Actions */}
+
         <View style={styles.bottomBar}>
           <View style={styles.swipeHints}>
             <Text style={styles.hintText}>
