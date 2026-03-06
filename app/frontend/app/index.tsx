@@ -367,8 +367,8 @@ export default function Index() {
         if (!todayOnly && currentIndex >= papers.length - 5 && hasMore && !loadingMore) {
           fetchPapers(selectedCategories, papers.length, true);
         }
-      } else if (!loadingMore && !refreshing) {
-        // At the last paper — try fetching new papers
+      } else if (!todayOnly && !loadingMore && !refreshing) {
+        // At the last paper (not in Today mode) — try fetching new papers
         setRefreshing(true);
         fetchPapers(selectedCategories, 0, false);
       }
@@ -744,7 +744,7 @@ export default function Index() {
           <View style={styles.headerRight}>
             <TouchableOpacity
               style={[styles.todayBtn, todayOnly && styles.todayBtnActive]}
-              onPress={() => { setTodayOnly(prev => !prev); setCurrentIndex(0); setAbstractPart(0); }}
+              onPress={() => { setTodayOnly(prev => !prev); setCurrentIndex(0); setAbstractPart(0); setAllPapersSeen(false); }}
             >
               <Text style={[styles.todayBtnText, todayOnly && styles.todayBtnTextActive]}>Today</Text>
             </TouchableOpacity>
@@ -777,22 +777,28 @@ export default function Index() {
         {/* Main Card */}
         <GestureDetector gesture={panGesture}>
           <Animated.View style={[styles.cardArea, animatedCardStyle]}>
-            {allPapersSeen || (!currentPaper && !loading) ? (
+            {allPapersSeen ? (
               <View style={styles.emptyCard}>
                 <Ionicons name="checkmark-circle-outline" size={48} color="#ccc" />
-                <Text style={styles.emptyCardText}>
-                  {todayOnly ? "You've seen all of today's papers" : "You've seen all available papers"}
-                </Text>
-                {todayOnly ? (
-                  <TouchableOpacity
-                    style={styles.disableTodayBtn}
-                    onPress={() => { setTodayOnly(false); setCurrentIndex(0); setAbstractPart(0); }}
-                  >
-                    <Text style={styles.disableTodayBtnText}>Disable Today filter to see more</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <Text style={styles.emptyCardSubtext}>Check back tomorrow for new listings</Text>
-                )}
+                <Text style={styles.emptyCardText}>You've seen all available papers</Text>
+                <Text style={styles.emptyCardSubtext}>Check back tomorrow for new listings</Text>
+              </View>
+            ) : todayOnly && displayPapers.length === 0 && papers.length > 0 && !loading ? (
+              <View style={styles.emptyCard}>
+                <Ionicons name="calendar-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyCardText}>No new papers today in these categories</Text>
+                <TouchableOpacity
+                  style={styles.disableTodayBtn}
+                  onPress={() => { setTodayOnly(false); setCurrentIndex(0); setAbstractPart(0); setAllPapersSeen(false); }}
+                >
+                  <Text style={styles.disableTodayBtnText}>Show all recent papers</Text>
+                </TouchableOpacity>
+              </View>
+            ) : papers.length === 0 && !loading ? (
+              <View style={styles.emptyCard}>
+                <Ionicons name="search-outline" size={48} color="#ccc" />
+                <Text style={styles.emptyCardText}>No papers found</Text>
+                <Text style={styles.emptyCardSubtext}>Try selecting different categories</Text>
               </View>
             ) : currentPaper && (
               <View style={styles.card}>
