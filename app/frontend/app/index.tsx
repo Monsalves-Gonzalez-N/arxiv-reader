@@ -117,12 +117,14 @@ function splitAbstract(abstract: string): string[] {
 
 export default function Index() {
   const [deviceId, setDeviceId] = useState<string>('');
-  const seenIds = useRef<Set<string>>(new Set());
+  // viewedPaperIds: papers actually swiped past (persisted per calendar day)
+  const [viewedPaperIds, setViewedPaperIds] = useState<Set<string>>(new Set());
   const [refreshing, setRefreshing] = useState(false);
-  const [allPapersSeen, setAllPapersSeen] = useState(false);
 
   const [papers, setPapers] = useState<Paper[]>([]);
-  const [currentIndex, setCurrentIndex] = useState(0);
+  // currentIndex is always 0 — displayPapers shrinks as papers are viewed,
+  // so the next unread paper is always at index 0.
+  const currentIndex = 0;
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [selectedCategories, setSelectedCategories] = useState<Set<string>>(new Set([]));
@@ -146,10 +148,13 @@ export default function Index() {
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
 
-  const displayPapers = useMemo(() =>
-    todayOnly ? papers.filter(p => p.is_new) : papers,
-    [papers, todayOnly]
-  );
+  const todayPapers = useMemo(() => papers.filter(p => p.is_new), [papers]);
+  const allTodaySeen = todayPapers.length > 0 && todayPapers.every(p => viewedPaperIds.has(p.id));
+
+  const displayPapers = useMemo(() => {
+    if (todayOnly) return papers.filter(p => p.is_new && !viewedPaperIds.has(p.id));
+    return papers.filter(p => !viewedPaperIds.has(p.id));
+  }, [papers, todayOnly, viewedPaperIds]);
 
   const currentPaper = currentView === 'foryou' ? forYouPapers[forYouIndex] : displayPapers[currentIndex];
   const abstractParts = useMemo(() => 
@@ -161,7 +166,14 @@ export default function Index() {
   useEffect(() => {
     initDeviceId();
     loadSavedCategories();
+    loadViewedPapers();
   }, []);
+
+  useEffect(() => {
+    if (viewedPaperIds.size === 0) return;
+    const today = new Date().toISOString().split('T')[0];
+    AsyncStorage.setItem(`viewed_${today}`, JSON.stringify([...viewedPaperIds]));
+  }, [viewedPaperIds]);
 
   const initDeviceId = async () => {
     let id = await AsyncStorage.getItem('device_id');
@@ -185,6 +197,12 @@ export default function Index() {
     }
   };
 
+  const loadViewedPapers = async () => {
+    const today = new Date().toISOString().split('T')[0];
+    const saved = await AsyncStorage.getItem(`viewed_${today}`);
+    if (saved) setViewedPaperIds(new Set(JSON.parse(saved)));
+  };
+
   const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false) => {
     try {
       if (start === 0 && !append) setLoading(true);
@@ -203,20 +221,14 @@ export default function Index() {
       const data = await response.json();
       const fetched: Paper[] = data.papers || [];
 
-      const fresh = fetched.filter(p => !seenIds.current.has(p.id));
-      fresh.forEach(p => seenIds.current.add(p.id));
-
-      if (fresh.length === 0 && !append) {
-        setAllPapersSeen(true);
+      if (append) {
+        setPapers(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          return [...prev, ...fetched.filter(p => !existingIds.has(p.id))];
+        });
       } else {
-        setAllPapersSeen(false);
-        if (append) {
-          setPapers(prev => [...prev, ...fresh]);
-        } else {
-          setPapers(fresh);
-          setCurrentIndex(0);
-          setAbstractPart(0);
-        }
+        setPapers(fetched);
+        setAbstractPart(0);
       }
       setHasMore(data.has_more ?? false);
     } catch (error) {
@@ -279,8 +291,6 @@ export default function Index() {
   }, [currentView, yearFrom, yearTo]);
 
   const toggleCategory = (categoryKey: string) => {
-    seenIds.current.clear();
-    setAllPapersSeen(false);
     setSelectedCategories(prev => {
       const newSet = new Set(prev);
       if (newSet.has(categoryKey)) {
@@ -349,11 +359,7 @@ export default function Index() {
   };
 
   const goToNext = useCallback(() => {
-    // Mark current paper as viewed before moving to next
-    const paper = currentView === 'foryou' ? forYouPapers[forYouIndex] : displayPapers[currentIndex];
-    if (paper) {
-      markPaperViewed(paper.id);
-    }
+    const paper = currentView === 'foryou' ? forYouPapers[forYouIndex] : displayPapers[0];
 
     if (currentView === 'foryou') {
       if (forYouIndex < forYouPapers.length - 1) {
@@ -361,33 +367,29 @@ export default function Index() {
         setAbstractPart(0);
       }
     } else {
-      if (currentIndex < displayPapers.length - 1) {
-        setCurrentIndex(prev => prev + 1);
+      if (paper) {
+        // Mark as viewed — displayPapers auto-shrinks, next paper appears at index 0
+        markPaperViewed(paper.id);
+        setViewedPaperIds(prev => new Set([...prev, paper.id]));
         setAbstractPart(0);
-        if (!todayOnly && currentIndex >= papers.length - 5 && hasMore && !loadingMore) {
+        // Load more from backend when running low on unviewed papers
+        if (!todayOnly && displayPapers.length <= 5 && hasMore && !loadingMore) {
           fetchPapers(selectedCategories, papers.length, true);
         }
       } else if (!todayOnly && !loadingMore && !refreshing) {
-        // At the last paper (not in Today mode) — try fetching new papers
         setRefreshing(true);
         fetchPapers(selectedCategories, 0, false);
       }
     }
-  }, [currentView, currentIndex, forYouIndex, displayPapers, papers, forYouPapers, hasMore, loadingMore, selectedCategories, fetchPapers, todayOnly]);
+  }, [currentView, forYouIndex, displayPapers, papers, forYouPapers, hasMore, loadingMore, selectedCategories, fetchPapers, todayOnly, refreshing]);
 
   const goToPrevious = useCallback(() => {
-    if (currentView === 'foryou') {
-      if (forYouIndex > 0) {
-        setForYouIndex(prev => prev - 1);
-        setAbstractPart(0);
-      }
-    } else {
-      if (currentIndex > 0) {
-        setCurrentIndex(prev => prev - 1);
-        setAbstractPart(0);
-      }
+    if (currentView === 'foryou' && forYouIndex > 0) {
+      setForYouIndex(prev => prev - 1);
+      setAbstractPart(0);
     }
-  }, [currentView, currentIndex, forYouIndex]);
+    // In feed mode: no back — viewed papers are removed from display
+  }, [currentView, forYouIndex]);
 
   const nextAbstractPart = useCallback(() => {
     if (abstractPart < abstractParts.length) {
@@ -744,7 +746,7 @@ export default function Index() {
           <View style={styles.headerRight}>
             <TouchableOpacity
               style={[styles.todayBtn, todayOnly && styles.todayBtnActive]}
-              onPress={() => { setTodayOnly(prev => !prev); setCurrentIndex(0); setAbstractPart(0); setAllPapersSeen(false); }}
+              onPress={() => { setTodayOnly(prev => !prev); setAbstractPart(0); }}
             >
               <Text style={[styles.todayBtnText, todayOnly && styles.todayBtnTextActive]}>Today</Text>
             </TouchableOpacity>
@@ -777,11 +779,16 @@ export default function Index() {
         {/* Main Card */}
         <GestureDetector gesture={panGesture}>
           <Animated.View style={[styles.cardArea, animatedCardStyle]}>
-            {allPapersSeen ? (
+            {todayOnly && allTodaySeen ? (
               <View style={styles.emptyCard}>
                 <Ionicons name="checkmark-circle-outline" size={48} color="#ccc" />
-                <Text style={styles.emptyCardText}>You've seen all available papers</Text>
-                <Text style={styles.emptyCardSubtext}>Check back tomorrow for new listings</Text>
+                <Text style={styles.emptyCardText}>You've seen all of today's papers</Text>
+                <TouchableOpacity
+                  style={styles.disableTodayBtn}
+                  onPress={() => { setTodayOnly(false); setAbstractPart(0); }}
+                >
+                  <Text style={styles.disableTodayBtnText}>Show more recent papers</Text>
+                </TouchableOpacity>
               </View>
             ) : todayOnly && displayPapers.length === 0 && papers.length > 0 && !loading ? (
               <View style={styles.emptyCard}>
@@ -789,12 +796,12 @@ export default function Index() {
                 <Text style={styles.emptyCardText}>No new papers today in these categories</Text>
                 <TouchableOpacity
                   style={styles.disableTodayBtn}
-                  onPress={() => { setTodayOnly(false); setCurrentIndex(0); setAbstractPart(0); setAllPapersSeen(false); }}
+                  onPress={() => { setTodayOnly(false); setAbstractPart(0); }}
                 >
                   <Text style={styles.disableTodayBtnText}>Show all recent papers</Text>
                 </TouchableOpacity>
               </View>
-            ) : papers.length === 0 && !loading ? (
+            ) : displayPapers.length === 0 && !loading ? (
               <View style={styles.emptyCard}>
                 <Ionicons name="search-outline" size={48} color="#ccc" />
                 <Text style={styles.emptyCardText}>No papers found</Text>
@@ -855,7 +862,9 @@ export default function Index() {
                 </View>
 
                 <Text style={styles.counter}>
-                  {currentIndex + 1} / {displayPapers.length}
+                  {todayOnly
+                    ? `${todayPapers.length - displayPapers.length} / ${todayPapers.length} today`
+                    : `${displayPapers.length} remaining`}
                 </Text>
               </View>
             )}
@@ -868,7 +877,7 @@ export default function Index() {
           <View style={styles.swipeHints}>
             <Text style={styles.hintText}>
               {abstractPart === 0
-                ? currentIndex === displayPapers.length - 1
+                ? displayPapers.length <= 1 && !todayOnly
                   ? 'Swipe ↑ to refresh'
                   : `Swipe ← for abstract (${abstractParts.length} parts)`
                 : 'Swipe → to go back'}
