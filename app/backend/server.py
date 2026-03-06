@@ -40,9 +40,6 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
 
-# Auth constants
-EMERGENT_AUTH_URL = "https://demobackend.emergentagent.com/auth/v1/env/oauth/session-data"
-SESSION_EXPIRY_DAYS = 7
 
 # arXiv categories
 ASTRO_CATEGORIES = {
@@ -56,21 +53,6 @@ ASTRO_CATEGORIES = {
 }
 
 # Models
-class User(BaseModel):
-    user_id: str
-    email: str
-    name: str
-    picture: Optional[str] = None
-    created_at: datetime
-    last_seen_paper_date: Optional[str] = None
-
-class SessionDataResponse(BaseModel):
-    id: str
-    email: str
-    name: str
-    picture: Optional[str] = None
-    session_token: str
-
 class Paper(BaseModel):
     id: str
     title: str
@@ -110,56 +92,9 @@ class PapersResponse(BaseModel):
     has_more: bool
     new_papers_count: int = 0
 
-# Auth helpers
-async def get_session_token(request: Request) -> Optional[str]:
-    """Extract session token from cookie or header"""
-    # Try cookie first
-    session_token = request.cookies.get("session_token")
-    if session_token:
-        return session_token
-    
-    # Fall back to Authorization header
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        return auth_header[7:]
-    
-    return None
-
-async def get_current_user(request: Request) -> Optional[User]:
-    """Get current user from session token"""
-    session_token = await get_session_token(request)
-    if not session_token:
-        return None
-    
-    session = await db.user_sessions.find_one(
-        {"session_token": session_token},
-        {"_id": 0}
-    )
-    if not session:
-        return None
-    
-    # Check expiry with timezone awareness
-    expires_at = session["expires_at"]
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    
-    if expires_at < datetime.now(timezone.utc):
-        return None
-    
-    user_doc = await db.users.find_one(
-        {"user_id": session["user_id"]},
-        {"_id": 0}
-    )
-    if user_doc:
-        return User(**user_doc)
-    return None
-
-async def require_auth(request: Request) -> User:
-    """Require authentication"""
-    user = await get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
+def get_device_id(request: Request) -> str:
+    """Extract device ID from header, fallback to anonymous"""
+    return request.headers.get("X-Device-ID") or "anonymous"
 
 # Helper functions
 async def get_recent_paper_ids(category: str, max_results: int = 50):
@@ -355,90 +290,6 @@ async def get_recommendations(liked_papers: List[dict], all_papers: List[Paper],
     
     return recommendations
 
-# Auth Routes
-@api_router.post("/auth/session")
-async def create_session(request: Request, response: Response):
-    """Exchange session_id for session_token"""
-    body = await request.json()
-    session_id = body.get("session_id")
-    
-    if not session_id:
-        raise HTTPException(status_code=400, detail="session_id required")
-    
-    # Call Emergent Auth API
-    async with httpx.AsyncClient() as client:
-        auth_response = await client.get(
-            EMERGENT_AUTH_URL,
-            headers={"X-Session-ID": session_id}
-        )
-        
-        if auth_response.status_code != 200:
-            raise HTTPException(status_code=401, detail="Invalid session")
-        
-        user_data = auth_response.json()
-    
-    session_data = SessionDataResponse(**user_data)
-    
-    # Create or update user
-    user_id = f"user_{uuid.uuid4().hex[:12]}"
-    existing_user = await db.users.find_one({"email": session_data.email}, {"_id": 0})
-    
-    if existing_user:
-        user_id = existing_user["user_id"]
-    else:
-        await db.users.insert_one({
-            "user_id": user_id,
-            "email": session_data.email,
-            "name": session_data.name,
-            "picture": session_data.picture,
-            "created_at": datetime.now(timezone.utc),
-            "last_seen_paper_date": None
-        })
-    
-    # Create session
-    expires_at = datetime.now(timezone.utc) + timedelta(days=SESSION_EXPIRY_DAYS)
-    await db.user_sessions.insert_one({
-        "user_id": user_id,
-        "session_token": session_data.session_token,
-        "expires_at": expires_at,
-        "created_at": datetime.now(timezone.utc)
-    })
-    
-    # Set cookie
-    response.set_cookie(
-        key="session_token",
-        value=session_data.session_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        max_age=SESSION_EXPIRY_DAYS * 24 * 60 * 60,
-        path="/"
-    )
-    
-    return {
-        "user_id": user_id,
-        "email": session_data.email,
-        "name": session_data.name,
-        "picture": session_data.picture
-    }
-
-@api_router.get("/auth/me")
-async def get_me(request: Request):
-    """Get current user"""
-    user = await get_current_user(request)
-    if not user:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    return user
-
-@api_router.post("/auth/logout")
-async def logout(request: Request, response: Response):
-    """Logout user"""
-    session_token = await get_session_token(request)
-    if session_token:
-        await db.user_sessions.delete_one({"session_token": session_token})
-    
-    response.delete_cookie(key="session_token", path="/")
-    return {"message": "Logged out"}
 
 # Paper Routes
 @api_router.get("/")
@@ -457,8 +308,7 @@ async def get_papers(
     max_results: int = Query(default=20, ge=1, le=50)
 ):
     """Fetch papers from arXiv API - newest first like TikTok"""
-    user = await get_current_user(request)
-    last_seen_date = user.last_seen_paper_date if user else None
+    last_seen_date = None
     
     base_url = "https://export.arxiv.org/api/query"
     query = f"cat:{category}"
@@ -495,8 +345,7 @@ async def get_paper_feed(
     max_results: int = Query(default=20, ge=1, le=50)
 ):
     """Get paper feed - newest papers first from arXiv new submissions"""
-    user = await get_current_user(request)
-    user_id = user.user_id if user else "anonymous"
+    user_id = get_device_id(request)
 
     # Support comma-separated categories
     categories = [c.strip() for c in category.split(",") if c.strip()]
@@ -572,22 +421,12 @@ async def get_paper_feed(
 
 @api_router.post("/papers/mark-seen")
 async def mark_papers_seen(request: Request):
-    """Mark current date as last seen - clears new paper badge"""
-    user = await require_auth(request)
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    
-    await db.users.update_one(
-        {"user_id": user.user_id},
-        {"$set": {"last_seen_paper_date": today}}
-    )
-    
-    return {"message": "Papers marked as seen", "date": today}
+    return {"message": "ok"}
 
 @api_router.post("/papers/mark-viewed/{paper_id}")
 async def mark_paper_viewed(request: Request, paper_id: str):
     """Mark a paper as viewed to avoid showing it again"""
-    user = await get_current_user(request)
-    user_id = user.user_id if user else "anonymous"
+    user_id = get_device_id(request)
     
     # Check if already marked
     existing = await db.seen_papers.find_one({"user_id": user_id, "paper_id": paper_id})
@@ -604,8 +443,7 @@ async def mark_paper_viewed(request: Request, paper_id: str):
 @api_router.post("/likes")
 async def like_paper(request: Request, like_request: LikeRequest):
     """Like a paper"""
-    user = await get_current_user(request)
-    user_id = user.user_id if user else "anonymous"
+    user_id = get_device_id(request)
     
     existing = await db.liked_papers.find_one({
         "user_id": user_id,
@@ -635,8 +473,7 @@ async def like_paper(request: Request, like_request: LikeRequest):
 @api_router.delete("/likes/{paper_id}")
 async def unlike_paper(request: Request, paper_id: str):
     """Unlike a paper"""
-    user = await get_current_user(request)
-    user_id = user.user_id if user else "anonymous"
+    user_id = get_device_id(request)
     
     result = await db.liked_papers.delete_one({
         "user_id": user_id,
@@ -649,8 +486,7 @@ async def unlike_paper(request: Request, paper_id: str):
 @api_router.get("/likes")
 async def get_liked_papers(request: Request):
     """Get all liked papers for current user"""
-    user = await get_current_user(request)
-    user_id = user.user_id if user else "anonymous"
+    user_id = get_device_id(request)
     
     liked_papers = await db.liked_papers.find(
         {"user_id": user_id},
@@ -662,8 +498,7 @@ async def get_liked_papers(request: Request):
 @api_router.get("/likes/check/{paper_id}")
 async def check_if_liked(request: Request, paper_id: str):
     """Check if a paper is liked"""
-    user = await get_current_user(request)
-    user_id = user.user_id if user else "anonymous"
+    user_id = get_device_id(request)
     
     existing = await db.liked_papers.find_one({
         "user_id": user_id,
@@ -674,9 +509,7 @@ async def check_if_liked(request: Request, paper_id: str):
 @api_router.get("/new-papers-count")
 async def get_new_papers_count(request: Request, category: str = "astro-ph"):
     """Get count of new papers since last seen"""
-    user = await get_current_user(request)
-    if not user or not user.last_seen_paper_date:
-        return {"count": 0}
+    return {"count": 0}
     
     base_url = "https://export.arxiv.org/api/query"
     query = f"cat:{category}"
@@ -708,8 +541,7 @@ async def get_for_you_papers(
     max_results: int = Query(default=30, ge=1, le=100)
 ):
     """Get personalized recommendations based on likes, using recent papers"""
-    user = await get_current_user(request)
-    user_id = user.user_id if user else "anonymous"
+    user_id = get_device_id(request)
     
     # Get liked papers
     liked_papers = await db.liked_papers.find({"user_id": user_id}).to_list(100)

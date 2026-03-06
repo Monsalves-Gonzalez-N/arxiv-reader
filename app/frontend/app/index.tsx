@@ -11,7 +11,6 @@ import {
   ScrollView,
   Linking,
   Share,
-  Image,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -21,8 +20,6 @@ import Animated, {
   useAnimatedStyle,
   runOnJS,
 } from 'react-native-reanimated';
-import * as WebBrowser from 'expo-web-browser';
-import * as ExpoLinking from 'expo-linking';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -42,13 +39,6 @@ interface Paper {
   comment?: string | null;
   is_recommendation?: boolean;
   is_new?: boolean;
-}
-
-interface User {
-  user_id: string;
-  email: string;
-  name: string;
-  picture?: string;
 }
 
 const CATEGORIES = [
@@ -82,8 +72,7 @@ function splitAbstract(abstract: string): string[] {
 }
 
 export default function Index() {
-  const [user, setUser] = useState<User | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
+  const [deviceId, setDeviceId] = useState<string>('');
   
   const [papers, setPapers] = useState<Paper[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -123,10 +112,18 @@ export default function Index() {
   const totalParts = abstractParts.length + 1;
 
   useEffect(() => {
-    checkAuth();
-    handleDeepLink();
+    initDeviceId();
     loadSavedCategories();
   }, []);
+
+  const initDeviceId = async () => {
+    let id = await AsyncStorage.getItem('device_id');
+    if (!id) {
+      id = `device_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+      await AsyncStorage.setItem('device_id', id);
+    }
+    setDeviceId(id);
+  };
 
   const loadSavedCategories = async () => {
     try {
@@ -141,87 +138,14 @@ export default function Index() {
     }
   };
 
-  const checkAuth = async () => {
-    try {
-      const token = await AsyncStorage.getItem('session_token');
-      if (token) {
-        const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/auth/me`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (response.ok) {
-          const userData = await response.json();
-          setUser(userData);
-        }
-      }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-    } finally {
-      setAuthLoading(false);
-    }
-  };
-
-  const handleDeepLink = async () => {
-    const url = await ExpoLinking.getInitialURL();
-    if (url) processAuthRedirect(url);
-  };
-
-  const processAuthRedirect = async (url: string) => {
-    const sessionIdMatch = url.match(/[#?]session_id=([^&]+)/);
-    if (sessionIdMatch) {
-      const sessionId = sessionIdMatch[1];
-      try {
-        const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/auth/session`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId }),
-        });
-        if (response.ok) {
-          const data = await response.json();
-          await AsyncStorage.setItem('session_token', sessionId);
-          setUser(data);
-        }
-      } catch (error) {
-        console.error('Auth redirect failed:', error);
-      }
-    }
-  };
-
-  const login = async () => {
-    // Use window.location.origin for web, ExpoLinking for native
-    const redirectUrl = Platform.OS === 'web'
-      ? (typeof window !== 'undefined' ? window.location.origin : '')
-      : ExpoLinking.createURL('/');
-    const authUrl = `https://auth.emergentagent.com/?redirect=${encodeURIComponent(redirectUrl)}`;
-    
-    try {
-      const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-      if (result.type === 'success' && result.url) {
-        await processAuthRedirect(result.url);
-      }
-    } catch (error) {
-      console.error('Login failed:', error);
-    }
-  };
-
-  const logout = async () => {
-    try {
-      await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/auth/logout`, { method: 'POST' });
-      await AsyncStorage.removeItem('session_token');
-      setUser(null);
-    } catch (error) {
-      console.error('Logout failed:', error);
-    }
-  };
-
   const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false) => {
     try {
       if (start === 0) setLoading(true);
       else setLoadingMore(true);
-      
-      const token = await AsyncStorage.getItem('session_token');
-      const headers: any = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      
+
+      const id = await AsyncStorage.getItem('device_id');
+      const headers: any = id ? { 'X-Device-ID': id } : {};
+
       const categoryArray = Array.from(categories);
       const category = categoryArray.join(',');
       
@@ -232,13 +156,13 @@ export default function Index() {
       const data = await response.json();
       
       if (append) {
-        setPapers(prev => [...prev, ...data.papers]);
+        setPapers(prev => [...prev, ...(data.papers || [])]);
       } else {
-        setPapers(data.papers);
+        setPapers(data.papers || []);
         setCurrentIndex(0);
         setAbstractPart(0);
       }
-      setHasMore(data.has_more);
+      setHasMore(data.has_more ?? false);
     } catch (error) {
       console.error('Error fetching papers:', error);
     } finally {
@@ -250,10 +174,9 @@ export default function Index() {
   const fetchForYouPapers = useCallback(async () => {
     try {
       setForYouLoading(true);
-      
-      const token = await AsyncStorage.getItem('session_token');
-      const headers: any = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
+
+      const id = await AsyncStorage.getItem('device_id');
+      const headers: any = id ? { 'X-Device-ID': id } : {};
       
       const response = await fetch(
         `${EXPO_PUBLIC_BACKEND_URL}/api/for-you?category=astro-ph&year_from=${yearFrom}&year_to=${yearTo}&max_results=30`,
@@ -261,7 +184,7 @@ export default function Index() {
       );
       const data = await response.json();
       
-      setForYouPapers(data.papers);
+      setForYouPapers(data.papers || []);
       setForYouIndex(0);
       setAbstractPart(0);
     } catch (error) {
@@ -273,10 +196,9 @@ export default function Index() {
 
   const fetchLikedPapers = useCallback(async () => {
     try {
-      const token = await AsyncStorage.getItem('session_token');
-      const headers: any = {};
-      if (token) headers.Authorization = `Bearer ${token}`;
-      
+      const id = await AsyncStorage.getItem('device_id');
+      const headers: any = id ? { 'X-Device-ID': id } : {};
+
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes`, { headers });
       const data = await response.json();
       setLikedPapers(new Set(data.map((p: any) => p.paper_id)));
@@ -287,11 +209,11 @@ export default function Index() {
   }, []);
 
   useEffect(() => {
-    if (!authLoading && selectedCategories.size > 0) {
+    if (selectedCategories.size > 0) {
       fetchPapers(selectedCategories);
       fetchLikedPapers();
     }
-  }, [selectedCategories, authLoading]);
+  }, [selectedCategories]);
 
   useEffect(() => {
     if (currentView === 'foryou') {
@@ -314,9 +236,9 @@ export default function Index() {
 
   const toggleLike = async (paper: Paper) => {
     const isLiked = likedPapers.has(paper.id);
-    const token = await AsyncStorage.getItem('session_token');
+    const id = await AsyncStorage.getItem('device_id');
     const headers: any = { 'Content-Type': 'application/json' };
-    if (token) headers.Authorization = `Bearer ${token}`;
+    if (id) headers['X-Device-ID'] = id;
     
     try {
       if (isLiked) {
@@ -354,9 +276,9 @@ export default function Index() {
   // Mark paper as viewed (to avoid repetition like TikTok)
   const markPaperViewed = async (paperId: string) => {
     try {
-      const token = await AsyncStorage.getItem('session_token');
+      const id = await AsyncStorage.getItem('device_id');
       const headers: any = { 'Content-Type': 'application/json' };
-      if (token) headers.Authorization = `Bearer ${token}`;
+      if (id) headers['X-Device-ID'] = id;
       
       await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/papers/mark-viewed/${paperId}`, {
         method: 'POST',
@@ -462,7 +384,7 @@ export default function Index() {
   const openCoffee = () => Linking.openURL(COFFEE_LINK);
   const openPaper = () => currentPaper && Linking.openURL(currentPaper.link);
 
-  if (authLoading || loading) {
+  if (loading) {
     return (
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="dark-content" />
@@ -541,24 +463,6 @@ export default function Index() {
           </View>
 
           <ScrollView style={styles.settingsContent}>
-            {user ? (
-              <View style={styles.userCard}>
-                {user.picture && (
-                  <Image source={{ uri: user.picture }} style={styles.userPicture} />
-                )}
-                <Text style={styles.userName}>{user.name}</Text>
-                <Text style={styles.userEmail}>{user.email}</Text>
-                <TouchableOpacity style={styles.logoutBtn} onPress={logout}>
-                  <Text style={styles.logoutBtnText}>Sign Out</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <TouchableOpacity style={styles.loginBtn} onPress={login}>
-                <Ionicons name="logo-google" size={20} color="#fff" />
-                <Text style={styles.loginBtnText}>Sign in with Google</Text>
-              </TouchableOpacity>
-            )}
-
             <View style={styles.divider} />
 
             <TouchableOpacity style={styles.supportCard} onPress={openCoffee}>
