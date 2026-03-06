@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -73,7 +73,9 @@ function splitAbstract(abstract: string): string[] {
 
 export default function Index() {
   const [deviceId, setDeviceId] = useState<string>('');
-  
+  const seenIds = useRef<Set<string>>(new Set());
+  const [refreshing, setRefreshing] = useState(false);
+
   const [papers, setPapers] = useState<Paper[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -138,9 +140,9 @@ export default function Index() {
     }
   };
 
-  const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false) => {
+  const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false, isRefresh: boolean = false) => {
     try {
-      if (start === 0) setLoading(true);
+      if (start === 0 && !append) setLoading(true);
       else setLoadingMore(true);
 
       const id = await AsyncStorage.getItem('device_id');
@@ -148,17 +150,25 @@ export default function Index() {
 
       const categoryArray = Array.from(categories);
       const category = categoryArray.join(',');
-      
+
       const response = await fetch(
         `${EXPO_PUBLIC_BACKEND_URL}/api/papers/feed?category=${category}&start=${start}&max_results=20`,
         { headers }
       );
       const data = await response.json();
-      
+      const fetched: Paper[] = data.papers || [];
+
+      if (isRefresh) {
+        seenIds.current.clear();
+      }
+
+      const fresh = fetched.filter(p => !seenIds.current.has(p.id));
+      fresh.forEach(p => seenIds.current.add(p.id));
+
       if (append) {
-        setPapers(prev => [...prev, ...(data.papers || [])]);
+        setPapers(prev => [...prev, ...fresh]);
       } else {
-        setPapers(data.papers || []);
+        setPapers(fresh);
         setCurrentIndex(0);
         setAbstractPart(0);
       }
@@ -168,6 +178,7 @@ export default function Index() {
     } finally {
       setLoading(false);
       setLoadingMore(false);
+      setRefreshing(false);
     }
   }, []);
 
@@ -308,6 +319,10 @@ export default function Index() {
         if (!todayOnly && currentIndex >= papers.length - 5 && hasMore && !loadingMore) {
           fetchPapers(selectedCategories, papers.length, true);
         }
+      } else if (!loadingMore) {
+        // At the last paper — refresh
+        setRefreshing(true);
+        fetchPapers(selectedCategories, 0, false, true);
       }
     }
   }, [currentView, currentIndex, forYouIndex, displayPapers, papers, forYouPapers, hasMore, loadingMore, selectedCategories, fetchPapers, todayOnly]);
@@ -775,8 +790,10 @@ export default function Index() {
         <View style={styles.bottomBar}>
           <View style={styles.swipeHints}>
             <Text style={styles.hintText}>
-              {abstractPart === 0 
-                ? `Swipe ← for abstract (${abstractParts.length} parts)` 
+              {abstractPart === 0
+                ? currentIndex === displayPapers.length - 1
+                  ? 'Swipe ↑ to refresh'
+                  : `Swipe ← for abstract (${abstractParts.length} parts)`
                 : 'Swipe → to go back'}
             </Text>
           </View>
@@ -848,9 +865,10 @@ export default function Index() {
           </TouchableOpacity>
         )}
 
-        {loadingMore && (
+        {(loadingMore || refreshing) && (
           <View style={styles.loadingMore}>
             <ActivityIndicator size="small" color="#000" />
+            {refreshing && <Text style={styles.refreshingText}>Updating papers...</Text>}
           </View>
         )}
       </SafeAreaView>
@@ -915,7 +933,8 @@ const styles = StyleSheet.create({
   categoryCheckboxTextActive: { color: '#000', fontWeight: '600' },
   applyBtn: { marginTop: 20, paddingVertical: 14, backgroundColor: '#000', borderRadius: 10, alignItems: 'center' },
   applyBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
-  loadingMore: { position: 'absolute', bottom: 100, alignSelf: 'center' },
+  loadingMore: { position: 'absolute', bottom: 100, alignSelf: 'center', alignItems: 'center', gap: 4 },
+  refreshingText: { fontSize: 12, color: '#666', marginTop: 4 },
   likesList: { flex: 1, padding: 16 },
   emptyState: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop: 100 },
   emptyText: { marginTop: 12, fontSize: 16, color: '#999' },
