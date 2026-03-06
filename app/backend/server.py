@@ -3,6 +3,9 @@ from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 import os
 import logging
 from pathlib import Path
@@ -26,8 +29,13 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url, tls=True, tlsAllowInvalidCertificates=True)
 db = client[os.environ.get('DB_NAME', 'arxiv_tiktok')]
 
+# Rate limiter
+limiter = Limiter(key_func=get_remote_address)
+
 # Create the main app
 app = FastAPI()
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # Create a router with the /api prefix
 api_router = APIRouter(prefix="/api")
@@ -479,6 +487,7 @@ async def get_papers(
         raise HTTPException(status_code=500, detail=f"Error fetching papers: {str(e)}")
 
 @api_router.get("/papers/feed", response_model=PapersResponse)
+@limiter.limit("30/minute")
 async def get_paper_feed(
     request: Request,
     category: str = Query(default="astro-ph"),
@@ -690,6 +699,7 @@ async def get_new_papers_count(request: Request, category: str = "astro-ph"):
         return {"count": 0}
 
 @api_router.get("/for-you", response_model=PapersResponse)
+@limiter.limit("10/minute")
 async def get_for_you_papers(
     request: Request,
     category: str = Query(default="astro-ph"),
@@ -777,10 +787,16 @@ async def get_for_you_papers(
 # Include router
 app.include_router(api_router)
 
+ALLOWED_ORIGINS = [
+    "https://arxiv-reader-psi.vercel.app",
+    "http://localhost:8081",
+    "http://localhost:19006",
+]
+
 app.add_middleware(
     CORSMiddleware,
     allow_credentials=False,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_methods=["*"],
     allow_headers=["*"],
 )
