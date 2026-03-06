@@ -153,51 +153,49 @@ async def get_recent_paper_ids(category: str, max_results: int = 50):
         return [], None
 
 async def get_papers_by_ids(paper_ids: List[str], category: str, announced_date: str = None) -> List[Paper]:
-    """Fetch paper details by IDs from arXiv API"""
+    """Fetch paper details by IDs from arXiv API, batching in groups of 50."""
     if not paper_ids:
         return []
-    
-    # Batch request (max 50 at a time)
-    id_list = ','.join(paper_ids[:50])
-    url = f"https://export.arxiv.org/api/query?id_list={id_list}&max_results=50"
-    
-    try:
-        async with httpx.AsyncClient(timeout=30.0) as http_client:
-            response = await http_client.get(url)
-            response.raise_for_status()
-            
-        feed = feedparser.parse(response.text)
-        papers = []
-        
-        for entry in feed.entries:
-            paper_id = entry.id.split('/abs/')[-1]
-            title = ' '.join(entry.title.split())
-            abstract = ' '.join(entry.summary.split())
-            authors = [author.name for author in entry.authors]
-            published = announced_date if announced_date else entry.published[:10]
 
-            comment = None
-            if hasattr(entry, 'arxiv_comment'):
-                comment = entry.arxiv_comment
-            elif 'arxiv_comment' in entry:
-                comment = entry['arxiv_comment']
-            
-            papers.append(Paper(
-                id=paper_id,
-                title=title,
-                abstract=abstract,
-                authors=authors,
-                published=published,
-                link=entry.link,
-                category=category,
-                comment=comment,
-                is_new=True
-            ))
-        
-        return papers
-    except Exception as e:
-        logging.error(f"Error fetching papers by IDs: {e}")
-        return []
+    import asyncio
+
+    BATCH_SIZE = 50
+
+    async def fetch_batch(batch: List[str]) -> List[Paper]:
+        id_list = ','.join(batch)
+        url = f"https://export.arxiv.org/api/query?id_list={id_list}&max_results={len(batch)}"
+        try:
+            async with httpx.AsyncClient(timeout=30.0) as http_client:
+                response = await http_client.get(url)
+                response.raise_for_status()
+            feed = feedparser.parse(response.text)
+            result = []
+            for entry in feed.entries:
+                paper_id = entry.id.split('/abs/')[-1]
+                comment = None
+                if hasattr(entry, 'arxiv_comment'):
+                    comment = entry.arxiv_comment
+                elif 'arxiv_comment' in entry:
+                    comment = entry['arxiv_comment']
+                result.append(Paper(
+                    id=paper_id,
+                    title=' '.join(entry.title.split()),
+                    abstract=' '.join(entry.summary.split()),
+                    authors=[author.name for author in entry.authors],
+                    published=announced_date if announced_date else entry.published[:10],
+                    link=entry.link,
+                    category=category,
+                    comment=comment,
+                    is_new=True,
+                ))
+            return result
+        except Exception as e:
+            logging.error(f"Error fetching batch: {e}")
+            return []
+
+    batches = [paper_ids[i:i + BATCH_SIZE] for i in range(0, len(paper_ids), BATCH_SIZE)]
+    results = await asyncio.gather(*[fetch_batch(b) for b in batches])
+    return [paper for batch in results for paper in batch]
 
 def parse_arxiv_response(feed_data, category: str, last_seen_date: Optional[str] = None) -> List[Paper]:
     """Parse arXiv API response into Paper objects"""
@@ -234,6 +232,44 @@ def parse_arxiv_response(feed_data, category: str, last_seen_date: Optional[str]
         ))
     
     return papers
+
+async def blend_feed_papers(papers: List[Paper], liked_papers: List[dict]) -> List[Paper]:
+    """Re-rank feed papers using 80% recency + 20% TF-IDF similarity to liked papers.
+    Falls back to original order if insufficient data."""
+    if not papers or not liked_papers or len(liked_papers) < 2:
+        return papers
+
+    try:
+        liked_texts = [f"{p['title']} {p['abstract']}" for p in liked_papers]
+        candidate_texts = [f"{p.title} {p.abstract}" for p in papers]
+
+        vectorizer = TfidfVectorizer(stop_words='english', max_features=1000)
+        tfidf_matrix = vectorizer.fit_transform(liked_texts + candidate_texts)
+
+        liked_vectors = tfidf_matrix[:len(liked_texts)]
+        candidate_vectors = tfidf_matrix[len(liked_texts):]
+
+        similarity_scores = cosine_similarity(candidate_vectors, liked_vectors).mean(axis=1)
+
+        today = datetime.now(timezone.utc)
+        recency_scores = []
+        for paper in papers:
+            try:
+                pub_date = datetime.strptime(paper.published, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+                days_old = (today - pub_date).days
+                recency_scores.append(max(0.0, 1.0 - (days_old / 365)))
+            except Exception:
+                recency_scores.append(0.5)
+
+        recency_scores = np.array(recency_scores)
+        combined_scores = 0.8 * recency_scores + 0.2 * similarity_scores
+
+        sorted_indices = np.argsort(combined_scores)[::-1]
+        return [papers[i] for i in sorted_indices]
+    except Exception as e:
+        logging.warning(f"blend_feed_papers failed, returning original order: {e}")
+        return papers
+
 
 async def get_recommendations(liked_papers: List[dict], all_papers: List[Paper], top_n: int = 10) -> List[Paper]:
     """Get paper recommendations based on liked papers using TF-IDF similarity, prioritizing recent papers"""
@@ -397,22 +433,21 @@ async def get_paper_feed(
                 await db.seen_papers.delete_many({"user_id": user_id})
                 unseen_ids = recent_ids
 
-            # Get papers for the current page
-            page_ids = unseen_ids[start:start + max_results]
-
-            if page_ids:
-                papers = await get_papers_by_ids(page_ids, primary_category, announced_date)
+            # Return all unseen today's papers — the count is finite and known
+            if unseen_ids:
+                papers = await get_papers_by_ids(unseen_ids, primary_category, announced_date)
             else:
                 papers = []
 
-        # Get liked papers set
-        liked_docs = await db.liked_papers.find({"user_id": user_id}, {"paper_id": 1}).to_list(100)
-        liked_ids = set(doc["paper_id"] for doc in liked_docs)
+        # Blend feed using liked papers when available (80% recency + 20% similarity)
+        liked_docs = await db.liked_papers.find({"user_id": user_id}).to_list(100)
+        if liked_docs and len(liked_docs) >= 2:
+            papers = await blend_feed_papers(papers, liked_docs)
 
         return PapersResponse(
             papers=papers,
-            total=len(recent_ids) if recent_ids else 0,
-            has_more=start + len(papers) < len(recent_ids) if recent_ids else False,
+            total=len(papers),
+            has_more=False,
             new_papers_count=len(papers)
         )
     except Exception as e:

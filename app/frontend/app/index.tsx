@@ -145,6 +145,8 @@ export default function Index() {
   const [showYearPicker, setShowYearPicker] = useState<'from' | 'to' | null>(null);
   const [todayOnly, setTodayOnly] = useState(false);
 
+  const olderStartRef = useRef(0);
+
   const translateX = useSharedValue(0);
   const translateY = useSharedValue(0);
 
@@ -203,10 +205,12 @@ export default function Index() {
     if (saved) setViewedPaperIds(new Set(JSON.parse(saved)));
   };
 
-  const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false) => {
+  const fetchPapers = useCallback(async (categories: Set<string>, start: number = 0, append: boolean = false, silent: boolean = false) => {
     try {
-      if (start === 0 && !append) setLoading(true);
-      else setLoadingMore(true);
+      if (!silent) {
+        if (start === 0 && !append) setLoading(true);
+        else setLoadingMore(true);
+      }
 
       const id = await AsyncStorage.getItem('device_id');
       const headers: any = id ? { 'X-Device-ID': id } : {};
@@ -215,7 +219,7 @@ export default function Index() {
       const category = categoryArray.join(',');
 
       const response = await fetch(
-        `${EXPO_PUBLIC_BACKEND_URL}/api/papers/feed?category=${category}&start=${start}&max_results=20`,
+        `${EXPO_PUBLIC_BACKEND_URL}/api/papers/feed?category=${category}`,
         { headers }
       );
       const data = await response.json();
@@ -228,15 +232,17 @@ export default function Index() {
         });
       } else {
         setPapers(fetched);
-        setAbstractPart(0);
+        if (!silent) setAbstractPart(0);
       }
       setHasMore(data.has_more ?? false);
     } catch (error) {
       console.error('Error fetching papers:', error);
     } finally {
-      setLoading(false);
-      setLoadingMore(false);
-      setRefreshing(false);
+      if (!silent) {
+        setLoading(false);
+        setLoadingMore(false);
+        setRefreshing(false);
+      }
     }
   }, []);
 
@@ -277,8 +283,35 @@ export default function Index() {
     }
   }, []);
 
+  const fetchOlderPapers = useCallback(async (categories: Set<string>) => {
+    try {
+      setLoadingMore(true);
+      const id = await AsyncStorage.getItem('device_id');
+      const headers: any = id ? { 'X-Device-ID': id } : {};
+      const category = Array.from(categories).join(',');
+      const response = await fetch(
+        `${EXPO_PUBLIC_BACKEND_URL}/api/papers?category=${category}&start=${olderStartRef.current}&max_results=20`,
+        { headers }
+      );
+      const data = await response.json();
+      const fetched: Paper[] = data.papers || [];
+      if (fetched.length > 0) {
+        olderStartRef.current += fetched.length;
+        setPapers(prev => {
+          const existingIds = new Set(prev.map(p => p.id));
+          return [...prev, ...fetched.filter(p => !existingIds.has(p.id))];
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching older papers:', error);
+    } finally {
+      setLoadingMore(false);
+    }
+  }, []);
+
   useEffect(() => {
     if (selectedCategories.size > 0) {
+      olderStartRef.current = 0;
       fetchPapers(selectedCategories);
       fetchLikedPapers();
     }
@@ -289,6 +322,13 @@ export default function Index() {
       fetchForYouPapers();
     }
   }, [currentView, yearFrom, yearTo]);
+
+  // When today mode is turned off and queue is empty, start fetching older papers
+  useEffect(() => {
+    if (!todayOnly && displayPapers.length === 0 && !loading && !loadingMore && selectedCategories.size > 0) {
+      fetchOlderPapers(selectedCategories);
+    }
+  }, [todayOnly]);
 
   const toggleCategory = (categoryKey: string) => {
     setSelectedCategories(prev => {
@@ -335,6 +375,8 @@ export default function Index() {
           }),
         });
         setLikedPapers(prev => new Set(prev).add(paper.id));
+        // Feedback loop: silently re-rank the queue based on new like
+        fetchPapers(selectedCategories, 0, false, true);
       }
       fetchLikedPapers();
     } catch (error) {
@@ -372,16 +414,15 @@ export default function Index() {
         markPaperViewed(paper.id);
         setViewedPaperIds(prev => new Set([...prev, paper.id]));
         setAbstractPart(0);
-        // Load more from backend when running low on unviewed papers
-        if (!todayOnly && displayPapers.length <= 5 && hasMore && !loadingMore) {
-          fetchPapers(selectedCategories, papers.length, true);
+        // Load more older papers when running low in non-today mode
+        if (!todayOnly && displayPapers.length <= 5 && !loadingMore) {
+          fetchOlderPapers(selectedCategories);
         }
-      } else if (!todayOnly && !loadingMore && !refreshing) {
-        setRefreshing(true);
-        fetchPapers(selectedCategories, 0, false);
+      } else if (!todayOnly && !loadingMore) {
+        fetchOlderPapers(selectedCategories);
       }
     }
-  }, [currentView, forYouIndex, displayPapers, papers, forYouPapers, hasMore, loadingMore, selectedCategories, fetchPapers, todayOnly, refreshing]);
+  }, [currentView, forYouIndex, displayPapers, forYouPapers, loadingMore, selectedCategories, fetchOlderPapers, todayOnly]);
 
   const goToPrevious = useCallback(() => {
     if (currentView === 'foryou' && forYouIndex > 0) {
