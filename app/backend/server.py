@@ -352,6 +352,7 @@ async def get_categories():
     return {"categories": ASTRO_CATEGORIES}
 
 @api_router.get("/papers", response_model=PapersResponse)
+@limiter.limit("20/minute")
 async def get_papers(
     request: Request,
     category: str = Query(default="astro-ph"),
@@ -494,6 +495,7 @@ async def mark_papers_seen(request: Request):
     return {"message": "ok"}
 
 @api_router.post("/papers/mark-viewed/{paper_id}")
+@limiter.limit("60/minute")
 async def mark_paper_viewed(request: Request, paper_id: str):
     """Mark a paper as viewed to avoid showing it again"""
     user_id = get_device_id(request)
@@ -511,6 +513,7 @@ async def mark_paper_viewed(request: Request, paper_id: str):
 
 # Likes Routes
 @api_router.post("/likes")
+@limiter.limit("30/minute")
 async def like_paper(request: Request, like_request: LikeRequest):
     """Like a paper"""
     user_id = get_device_id(request)
@@ -541,6 +544,7 @@ async def like_paper(request: Request, like_request: LikeRequest):
     return result
 
 @api_router.delete("/likes/{paper_id}")
+@limiter.limit("30/minute")
 async def unlike_paper(request: Request, paper_id: str):
     """Unlike a paper"""
     user_id = get_device_id(request)
@@ -554,6 +558,7 @@ async def unlike_paper(request: Request, paper_id: str):
     return {"message": "Paper unliked"}
 
 @api_router.get("/likes")
+@limiter.limit("30/minute")
 async def get_liked_papers(request: Request):
     """Get all liked papers for current user"""
     user_id = get_device_id(request)

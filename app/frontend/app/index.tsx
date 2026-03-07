@@ -22,6 +22,9 @@ import * as ExpoLinking from 'expo-linking';
 
 WebBrowser.maybeCompleteAuthSession();
 
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+
 const safeStorage = {
   getItem: (key: string) => (typeof window === 'undefined' && Platform.OS === 'web' ? Promise.resolve(null) : AsyncStorage.getItem(key)),
   setItem: (key: string, value: string) => (typeof window === 'undefined' && Platform.OS === 'web' ? Promise.resolve() : AsyncStorage.setItem(key, value)),
@@ -29,8 +32,8 @@ const safeStorage = {
 };
 
 const supabase = createClient(
-  'https://uhevyfocdvidemwlbzwf.supabase.co',
-  'sb_publishable_GmcGL88aldeGKYtiv3hguw_rVJkXgyy',
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
   { auth: { storage: safeStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false } }
 );
 

@@ -11,8 +11,8 @@ const safeStorage = {
 };
 
 const supabase = createClient(
-  'https://uhevyfocdvidemwlbzwf.supabase.co',
-  'sb_publishable_GmcGL88aldeGKYtiv3hguw_rVJkXgyy',
+  process.env.EXPO_PUBLIC_SUPABASE_URL || '',
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '',
   { auth: { storage: safeStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false } }
 );
 
