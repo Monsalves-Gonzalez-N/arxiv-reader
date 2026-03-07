@@ -53,3 +53,6 @@ requirements_local.txt
 
 # Memory
 memory/
+
+# Internal planning
+ROADMAP.md

@@ -20,9 +20,12 @@ from sklearn.metrics.pairwise import cosine_similarity
 import numpy as np
 
 import re
+import jwt
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
+
+SUPABASE_JWT_SECRET = os.environ.get('SUPABASE_JWT_SECRET', '')
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -97,7 +100,15 @@ class PapersResponse(BaseModel):
     new_papers_count: int = 0
 
 def get_device_id(request: Request) -> str:
-    """Extract device ID from header, fallback to anonymous"""
+    """Extract user ID from Supabase JWT, fallback to device ID, fallback to anonymous"""
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[7:]
+        try:
+            payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+            return payload.get("sub") or "anonymous"
+        except Exception:
+            pass
     return request.headers.get("X-Device-ID") or "anonymous"
 
 # Helper functions

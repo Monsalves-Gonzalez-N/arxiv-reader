@@ -16,6 +16,23 @@ import { Ionicons } from '@expo/vector-icons';
 import { GestureHandlerRootView, Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Animated, { useSharedValue, useAnimatedStyle, runOnJS } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { createClient, Session } from '@supabase/supabase-js';
+import * as WebBrowser from 'expo-web-browser';
+import * as ExpoLinking from 'expo-linking';
+
+WebBrowser.maybeCompleteAuthSession();
+
+const safeStorage = {
+  getItem: (key: string) => (typeof window === 'undefined' && Platform.OS === 'web' ? Promise.resolve(null) : AsyncStorage.getItem(key)),
+  setItem: (key: string, value: string) => (typeof window === 'undefined' && Platform.OS === 'web' ? Promise.resolve() : AsyncStorage.setItem(key, value)),
+  removeItem: (key: string) => (typeof window === 'undefined' && Platform.OS === 'web' ? Promise.resolve() : AsyncStorage.removeItem(key)),
+};
+
+const supabase = createClient(
+  'https://uhevyfocdvidemwlbzwf.supabase.co',
+  'sb_publishable_GmcGL88aldeGKYtiv3hguw_rVJkXgyy',
+  { auth: { storage: safeStorage, autoRefreshToken: true, persistSession: true, detectSessionInUrl: false } }
+);
 
 const EXPO_PUBLIC_BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL || '';
 const SWIPE_THRESHOLD = 50;
@@ -159,6 +176,8 @@ export default function Index() {
   const [currentView, setCurrentView] = useState<'feed' | 'likes' | 'settings'>('feed');
   const [abstractPart, setAbstractPart] = useState(0);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   const olderStartRef = useRef(0);
   const dwellStartRef = useRef<number>(Date.now());
@@ -175,6 +194,9 @@ export default function Index() {
 
   // Date label for header button
   const isToday = !selectedYear && !customFrom;
+  const todayStr = new Date().toISOString().split('T')[0];
+  const papersDate = isToday && papers.length > 0 ? papers[0].published : null;
+  const showOldPapersBanner = isToday && papersDate !== null && papersDate < todayStr;
   const dateLabel = customFrom && customTo
     ? `${customFrom.slice(6)}/${MONTH_NAMES[parseInt(customFrom.slice(4,6))-1]}–${customTo.slice(6)}/${MONTH_NAMES[parseInt(customTo.slice(4,6))-1]}`
     : selectedYear
@@ -182,16 +204,34 @@ export default function Index() {
       : 'Today';
 
   useEffect(() => {
-    initDeviceId();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
     loadSavedCategories();
+    return () => subscription.unsubscribe();
   }, []);
 
-  const initDeviceId = async () => {
-    let id = await AsyncStorage.getItem('device_id');
-    if (!id) {
-      id = `device_${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
-      await AsyncStorage.setItem('device_id', id);
-    }
+  const signInWithGoogle = async () => {
+    const redirectTo = ExpoLinking.createURL('auth/callback');
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo },
+    });
+  };
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+  };
+
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const { data: { session: s } } = await supabase.auth.getSession();
+    if (s?.access_token) return { 'Authorization': `Bearer ${s.access_token}` };
+    const id = await AsyncStorage.getItem('device_id');
+    return id ? { 'X-Device-ID': id } : {};
   };
 
   const loadSavedCategories = async () => {
@@ -216,8 +256,7 @@ export default function Index() {
       if (!append) setLoading(true);
       else setLoadingMore(true);
 
-      const id = await AsyncStorage.getItem('device_id');
-      const headers: any = id ? { 'X-Device-ID': id } : {};
+      const headers = await getAuthHeaders();
       const category = Array.from(categories).join(',');
 
       let url: string;
@@ -273,8 +312,7 @@ export default function Index() {
 
   const fetchLikedPapers = useCallback(async () => {
     try {
-      const id = await AsyncStorage.getItem('device_id');
-      const headers: any = id ? { 'X-Device-ID': id } : {};
+      const headers = await getAuthHeaders();
       const response = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes`, { headers });
       const data = await response.json();
       setLikedPapers(new Set(data.map((p: any) => p.paper_id)));
@@ -285,12 +323,12 @@ export default function Index() {
   }, []);
 
   useEffect(() => {
-    if (selectedCategories.size > 0) {
+    if (selectedCategories.size > 0 && session) {
       olderStartRef.current = 0;
       fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo);
       fetchLikedPapers();
     }
-  }, [selectedCategories]);
+  }, [selectedCategories, session]);
 
   useEffect(() => {
     if (selectedCategories.size > 0) {
@@ -319,9 +357,7 @@ export default function Index() {
 
   const toggleLike = async (paper: Paper) => {
     const isLiked = likedPapers.has(paper.id);
-    const id = await AsyncStorage.getItem('device_id');
-    const headers: any = { 'Content-Type': 'application/json' };
-    if (id) headers['X-Device-ID'] = id;
+    const headers: any = { ...(await getAuthHeaders()), 'Content-Type': 'application/json' };
     try {
       if (isLiked) {
         await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes/${paper.id}`, { method: 'DELETE', headers });
@@ -377,6 +413,18 @@ export default function Index() {
     if (abstractPart > 0) setAbstractPart(prev => prev - 1);
   }, [abstractPart]);
 
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowDown') goToNext();
+      else if (e.key === 'ArrowUp') goToPrevious();
+      else if (e.key === 'ArrowRight') nextAbstractPart();
+      else if (e.key === 'ArrowLeft') prevAbstractPart();
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [goToNext, goToPrevious, nextAbstractPart, prevAbstractPart]);
+
   const panGesture = Gesture.Pan()
     .minDistance(10)
     .onUpdate(e => { translateX.value = e.translationX; translateY.value = e.translationY; })
@@ -428,6 +476,32 @@ export default function Index() {
 
   const allPapersSeen = !loading && papers.length > 0 && currentIndex >= papers.length;
   const noPapersFound = !loading && papers.length === 0;
+
+  if (authLoading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <StatusBar barStyle="dark-content" />
+        <ActivityIndicator size="large" color="#000" />
+      </View>
+    );
+  }
+
+  if (!session) {
+    return (
+      <View style={styles.loginContainer}>
+        <StatusBar barStyle="dark-content" />
+        <Text style={styles.loginTitle}>arXiv Reader</Text>
+        <Text style={styles.loginSubtitle}>Daily astrophysics papers, personalized for you</Text>
+        <TouchableOpacity style={styles.googleBtn} onPress={signInWithGoogle}>
+          <Ionicons name="logo-google" size={20} color="#fff" />
+          <Text style={styles.googleBtnText}>Continue with Google</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setSession({ user: { id: 'guest' } } as any)}>
+          <Text style={styles.guestBtn}>Continue as guest</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   if (loading && papers.length === 0) {
     return (
@@ -516,6 +590,17 @@ export default function Index() {
               </View>
               <Ionicons name="chevron-forward" size={20} color="#ccc" />
             </TouchableOpacity>
+            <View style={styles.divider} />
+            <View style={styles.settingsItem}>
+              <Ionicons name="person-outline" size={24} color="#000" />
+              <View style={styles.settingsItemContent}>
+                <Text style={styles.settingsItemTitle}>{session?.user?.email}</Text>
+                <Text style={styles.settingsItemSub}>Signed in with Google</Text>
+              </View>
+            </View>
+            <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
+              <Text style={styles.signOutBtnText}>Sign out</Text>
+            </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
       </GestureHandlerRootView>
@@ -552,6 +637,16 @@ export default function Index() {
             </TouchableOpacity>
           </View>
         </View>
+
+        {/* Old papers banner */}
+        {showOldPapersBanner && (
+          <View style={styles.oldPapersBanner}>
+            <Ionicons name="information-circle-outline" size={14} color="#666" />
+            <Text style={styles.oldPapersBannerText}>
+              No new papers today — showing {papersDate ? new Date(papersDate + 'T12:00:00').toLocaleDateString('en-GB', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' }) : ''}
+            </Text>
+          </View>
+        )}
 
         {/* Card Area */}
         <GestureDetector gesture={panGesture}>
@@ -777,6 +872,8 @@ const styles = StyleSheet.create({
   dateBtnTextActive: { color: '#fff' },
   badge: { position: 'absolute', top: -2, right: -2, backgroundColor: '#000', borderRadius: 8, minWidth: 16, height: 16, justifyContent: 'center', alignItems: 'center' },
   badgeText: { color: '#fff', fontSize: 10, fontWeight: '600' },
+  oldPapersBanner: { flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 16, paddingVertical: 6, backgroundColor: '#f5f5f5' },
+  oldPapersBannerText: { fontSize: 12, color: '#666' },
 
   // Card
   cardArea: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 20 },
@@ -879,4 +976,16 @@ const styles = StyleSheet.create({
   settingsItemContent: { flex: 1, marginLeft: 12 },
   settingsItemTitle: { fontSize: 16, color: '#000' },
   settingsItemSub: { fontSize: 13, color: '#999', marginTop: 2 },
+
+  // Login screen
+  loginContainer: { flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
+  loginTitle: { fontSize: 32, fontWeight: '700', color: '#000', marginBottom: 8 },
+  loginSubtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 48 },
+  googleBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#000', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 14 },
+  googleBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  guestBtn: { marginTop: 20, fontSize: 14, color: '#999' },
+
+  // Sign out
+  signOutBtn: { marginTop: 24, paddingVertical: 14, borderRadius: 10, borderWidth: 1, borderColor: '#e0e0e0', alignItems: 'center' },
+  signOutBtnText: { fontSize: 15, color: '#666' },
 });
