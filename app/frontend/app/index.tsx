@@ -389,7 +389,7 @@ export default function Index() {
   };
 
   const toggleLike = async (paper: any) => {
-    const paperId = paper.id || paper.paper_id;
+    const paperId = paper.paper_id || paper.id;
     const isLiked = likedPapers.has(paperId);
     // Optimistic update first — avoids race condition with fetchLikedPapers
     if (isLiked) {
