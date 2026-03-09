@@ -1,5 +1,9 @@
 {
   "buildCommand": "cd app/frontend && npx expo export --platform web",
   "outputDirectory": "app/frontend/dist",
-  "installCommand": "cd app/frontend && yarn install"
+  "installCommand": "cd app/frontend && yarn install",
+  "rewrites": [
+    { "source": "/auth/callback", "destination": "/auth/callback/index.html" },
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
 }
