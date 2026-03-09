@@ -488,7 +488,7 @@ export default function Index() {
 
   useEffect(() => {
     if (!showOnboarding) return;
-    const t = setTimeout(dismissOnboarding, 6000);
+    const t = setTimeout(dismissOnboarding, 18000);
     return () => clearTimeout(t);
   }, [showOnboarding, dismissOnboarding]);
 
@@ -526,7 +526,8 @@ export default function Index() {
       <View style={styles.loadingContainer}>
         <StatusBar barStyle="dark-content" />
         <ActivityIndicator size="large" color="#000" />
-        <Text style={styles.loadingText}>Loading...</Text>
+        <Text style={styles.loadingTitle}>Fetching papers</Text>
+        <Text style={styles.loadingText}>Retrieving today's arXiv submissions…</Text>
       </View>
     );
   }
@@ -872,6 +873,10 @@ export default function Index() {
         {showOnboarding && (
           <TouchableOpacity style={styles.onboardingOverlay} activeOpacity={1} onPress={dismissOnboarding}>
             <View style={styles.onboardingCard}>
+              <View style={styles.onboardingCategoryHint}>
+                <Ionicons name="options-outline" size={16} color="#000" />
+                <Text style={styles.onboardingCategoryText}>Select your research areas ↖</Text>
+              </View>
               <View style={styles.onboardingRow}>
                 <Ionicons name="swap-vertical-outline" size={16} color="rgba(255,255,255,0.9)" />
                 <Text style={styles.onboardingText}>
@@ -888,10 +893,6 @@ export default function Index() {
                 <Ionicons name="heart-outline" size={16} color="rgba(255,255,255,0.9)" />
                 <Text style={styles.onboardingText}>Heart to save papers</Text>
               </View>
-              <View style={styles.onboardingRow}>
-                <Ionicons name="options-outline" size={16} color="rgba(255,255,255,0.9)" />
-                <Text style={styles.onboardingText}>Top left to filter categories</Text>
-              </View>
             </View>
           </TouchableOpacity>
         )}
@@ -904,7 +905,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   safeArea: { flex: 1 },
   loadingContainer: { flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center' },
-  loadingText: { marginTop: 12, color: '#999', fontSize: 14 },
+  loadingTitle: { marginTop: 16, color: '#000', fontSize: 17, fontWeight: '600' },
+  loadingText: { marginTop: 6, color: '#999', fontSize: 14 },
 
   // Header
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#f0f0f0' },
@@ -1037,7 +1039,9 @@ const styles = StyleSheet.create({
 
   // Onboarding hint
   onboardingOverlay: { position: 'absolute', bottom: 72, left: 0, right: 0, alignItems: 'center', pointerEvents: 'box-none' },
-  onboardingCard: { backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, gap: 10, maxWidth: 280 },
+  onboardingCard: { backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, gap: 10, maxWidth: 290 },
+  onboardingCategoryHint: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#fff', borderRadius: 8, paddingVertical: 7, paddingHorizontal: 12, marginBottom: 2 },
+  onboardingCategoryText: { fontSize: 13, fontWeight: '700', color: '#000' },
   onboardingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   onboardingText: { fontSize: 13, color: 'rgba(255,255,255,0.88)', letterSpacing: 0.1 },
 });
