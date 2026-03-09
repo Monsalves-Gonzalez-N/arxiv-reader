@@ -183,6 +183,8 @@ export default function Index() {
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [showCategorySetup, setShowCategorySetup] = useState(false);
+  const [setupDraft, setSetupDraft] = useState<Set<string>>(new Set());
 
   const olderStartRef = useRef(0);
   const dwellStartRef = useRef<number>(Date.now());
@@ -245,9 +247,14 @@ export default function Index() {
   const loadSavedCategories = async () => {
     try {
       const saved = await AsyncStorage.getItem('selected_categories');
-      setSelectedCategories(saved ? new Set(JSON.parse(saved)) : new Set(['astro-ph.GA', 'astro-ph.CO']));
+      if (saved) {
+        setSelectedCategories(new Set(JSON.parse(saved)));
+      } else {
+        // First time — let the user pick before loading anything
+        setShowCategorySetup(true);
+      }
     } catch {
-      setSelectedCategories(new Set(['astro-ph.GA', 'astro-ph.CO']));
+      setShowCategorySetup(true);
     }
   };
 
@@ -494,6 +501,14 @@ export default function Index() {
     setDatePickerMode('months');
   };
 
+  const confirmCategorySetup = () => {
+    if (setupDraft.size === 0) return;
+    AsyncStorage.setItem('selected_categories', JSON.stringify(Array.from(setupDraft)));
+    setSelectedCategories(setupDraft);
+    setShowCategorySetup(false);
+    fetchPapers(setupDraft, null, null, null, null);
+  };
+
   const exportToCSV = async () => {
     if (likedPapersList.length === 0) return;
     const h = 'Title,Authors,Published,Link\n';
@@ -550,6 +565,39 @@ export default function Index() {
         </TouchableOpacity>
         <TouchableOpacity onPress={() => setSession({ user: { id: 'guest' } } as any)}>
           <Text style={styles.guestBtn}>Continue as guest</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (showCategorySetup) {
+    return (
+      <View style={styles.setupContainer}>
+        <StatusBar barStyle="dark-content" />
+        <Text style={styles.setupTitle}>What do you work on?</Text>
+        <Text style={styles.setupSubtitle}>Select the areas you want to follow</Text>
+        <View style={styles.setupGrid}>
+          {CATEGORIES.map(cat => {
+            const active = setupDraft.has(cat.key);
+            return (
+              <TouchableOpacity
+                key={cat.key}
+                style={[styles.setupChip, active && styles.setupChipActive]}
+                onPress={() => setSetupDraft(prev => {
+                  const s = new Set(prev);
+                  s.has(cat.key) ? s.delete(cat.key) : s.add(cat.key);
+                  return s;
+                })}>
+                <Text style={[styles.setupChipText, active && styles.setupChipTextActive]}>{cat.label}</Text>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+        <TouchableOpacity
+          style={[styles.setupBtn, setupDraft.size === 0 && styles.setupBtnDisabled]}
+          onPress={confirmCategorySetup}
+          disabled={setupDraft.size === 0}>
+          <Text style={styles.setupBtnText}>Start reading</Text>
         </TouchableOpacity>
       </View>
     );
@@ -1065,6 +1113,19 @@ const styles = StyleSheet.create({
   googleBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: '#000', paddingVertical: 14, paddingHorizontal: 28, borderRadius: 14 },
   googleBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
   guestBtn: { marginTop: 20, fontSize: 14, color: '#999' },
+
+  // Category setup (first time)
+  setupContainer: { flex: 1, backgroundColor: '#fff', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 32 },
+  setupTitle: { fontSize: 26, fontWeight: '700', color: '#000', textAlign: 'center' },
+  setupSubtitle: { fontSize: 15, color: '#999', textAlign: 'center', marginTop: 8, marginBottom: 32 },
+  setupGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, justifyContent: 'center', marginBottom: 40 },
+  setupChip: { paddingVertical: 12, paddingHorizontal: 22, borderRadius: 24, borderWidth: 1.5, borderColor: '#ddd' },
+  setupChipActive: { backgroundColor: '#000', borderColor: '#000' },
+  setupChipText: { fontSize: 15, fontWeight: '500', color: '#555' },
+  setupChipTextActive: { color: '#fff', fontWeight: '600' },
+  setupBtn: { paddingVertical: 16, paddingHorizontal: 48, backgroundColor: '#000', borderRadius: 28 },
+  setupBtnDisabled: { backgroundColor: '#ccc' },
+  setupBtnText: { color: '#fff', fontSize: 16, fontWeight: '700' },
 
   // Sign out
   signOutBtn: { marginTop: 24, paddingVertical: 14, borderRadius: 10, borderWidth: 1, borderColor: '#e0e0e0', alignItems: 'center' },
