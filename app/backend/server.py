@@ -103,12 +103,18 @@ def get_device_id(request: Request) -> str:
     """Extract user ID from Supabase JWT, fallback to device ID, fallback to anonymous"""
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        token = auth_header[7:]
-        try:
-            payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
-            return payload.get("sub") or "anonymous"
-        except Exception:
-            pass
+        if not SUPABASE_JWT_SECRET:
+            logging.error("SUPABASE_JWT_SECRET is not set — cannot authenticate users, falling back to anonymous")
+        else:
+            token = auth_header[7:]
+            try:
+                payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+                user_id = payload.get("sub")
+                if user_id:
+                    return user_id
+                logging.warning("JWT decoded but 'sub' claim is missing")
+            except Exception as e:
+                logging.error(f"JWT decode failed: {e}")
     return request.headers.get("X-Device-ID") or "anonymous"
 
 # Helper functions
