@@ -700,17 +700,6 @@ async def get_for_you_papers(
         logging.error(f"Error fetching for-you papers: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching papers: {str(e)}")
 
-ADMIN_SECRET = os.environ.get('ADMIN_SECRET', '')
-
-@api_router.delete("/admin/cleanup-anonymous")
-async def cleanup_anonymous(request: Request):
-    """One-time cleanup: delete all data stored under user_id='anonymous'"""
-    if not ADMIN_SECRET or request.headers.get("X-Admin-Secret") != ADMIN_SECRET:
-        raise HTTPException(status_code=403, detail="Forbidden")
-    likes_result = await db.liked_papers.delete_many({"user_id": "anonymous"})
-    seen_result  = await db.seen_papers.delete_many({"user_id": "anonymous"})
-    return {"deleted_likes": likes_result.deleted_count, "deleted_seen": seen_result.deleted_count}
-
 # Include router
 app.include_router(api_router)
 
