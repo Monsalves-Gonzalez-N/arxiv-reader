@@ -21,11 +21,13 @@ import numpy as np
 
 import re
 import jwt
+from jwt import PyJWKClient
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-SUPABASE_JWT_SECRET = os.environ.get('SUPABASE_JWT_SECRET', '')
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+_jwks_client = PyJWKClient(f"{SUPABASE_URL}/auth/v1/.well-known/jwks.json") if SUPABASE_URL else None
 
 # MongoDB connection
 mongo_url = os.environ['MONGO_URL']
@@ -100,15 +102,16 @@ class PapersResponse(BaseModel):
     new_papers_count: int = 0
 
 def get_device_id(request: Request) -> str:
-    """Extract user ID from Supabase JWT, fallback to device ID, fallback to anonymous"""
+    """Extract user ID from Supabase JWT (JWKS/RS256), fallback to device ID, fallback to anonymous"""
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
-        if not SUPABASE_JWT_SECRET:
-            logging.error("SUPABASE_JWT_SECRET is not set — cannot authenticate users, falling back to anonymous")
+        if not _jwks_client:
+            logging.error("SUPABASE_URL is not set — cannot verify JWT, falling back to anonymous")
         else:
             token = auth_header[7:]
             try:
-                payload = jwt.decode(token, SUPABASE_JWT_SECRET, algorithms=["HS256"], audience="authenticated")
+                signing_key = _jwks_client.get_signing_key_from_jwt(token)
+                payload = jwt.decode(token, signing_key.key, algorithms=["RS256"], audience="authenticated")
                 user_id = payload.get("sub")
                 if user_id:
                     return user_id
