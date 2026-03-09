@@ -179,6 +179,7 @@ export default function Index() {
   const [currentView, setCurrentView] = useState<'feed' | 'likes' | 'settings'>('feed');
   const [abstractPart, setAbstractPart] = useState(0);
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
+  const [draftCategories, setDraftCategories] = useState<Set<string>>(new Set());
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -335,7 +336,9 @@ export default function Index() {
       fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo);
       fetchLikedPapers();
     }
-  }, [selectedCategories, session]);
+  }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Note: selectedCategories intentionally omitted — category changes trigger fetches
+  // explicitly via the Apply button to avoid a fetch on every checkbox tap.
 
   useEffect(() => {
     if (selectedCategories.size > 0) {
@@ -353,13 +356,24 @@ export default function Index() {
     }
   }, [currentIndex]);
 
+  const openCategoryPicker = () => {
+    setDraftCategories(new Set(selectedCategories));
+    setShowCategoryPicker(true);
+  };
+
   const toggleCategory = (key: string) => {
-    setSelectedCategories(prev => {
+    setDraftCategories(prev => {
       const s = new Set(prev);
       if (s.has(key)) { if (s.size > 1) s.delete(key); } else s.add(key);
-      AsyncStorage.setItem('selected_categories', JSON.stringify(Array.from(s)));
       return s;
     });
+  };
+
+  const applyCategories = () => {
+    setSelectedCategories(draftCategories);
+    AsyncStorage.setItem('selected_categories', JSON.stringify(Array.from(draftCategories)));
+    setShowCategoryPicker(false);
+    fetchPapers(draftCategories, selectedYear, selectedMonth, customFrom, customTo);
   };
 
   const toggleLike = async (paper: Paper) => {
@@ -634,7 +648,7 @@ export default function Index() {
 
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity style={styles.categoryBtn} onPress={() => setShowCategoryPicker(true)}>
+          <TouchableOpacity style={styles.categoryBtn} onPress={openCategoryPicker}>
             <Text style={styles.categoryBtnText}>
               {selectedCategories.size === CATEGORIES.length ? 'All' : `${selectedCategories.size} selected`}
             </Text>
@@ -757,8 +771,7 @@ export default function Index() {
 
         {/* Category Modal */}
         {showCategoryPicker && (
-          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1}
-            onPress={() => { setShowCategoryPicker(false); fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo); }}>
+          <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={applyCategories}>
             <TouchableOpacity activeOpacity={1} onPress={() => {}}>
               <View style={styles.categoryModal}>
                 <Text style={styles.categoryModalTitle}>Select Categories</Text>
@@ -766,16 +779,16 @@ export default function Index() {
                 <View style={styles.categoryGrid}>
                   {CATEGORIES.map(cat => (
                     <TouchableOpacity key={cat.key}
-                      style={[styles.categoryCheckbox, selectedCategories.has(cat.key) && styles.categoryCheckboxActive]}
+                      style={[styles.categoryCheckbox, draftCategories.has(cat.key) && styles.categoryCheckboxActive]}
                       onPress={() => toggleCategory(cat.key)}>
-                      <View style={[styles.checkbox, selectedCategories.has(cat.key) && styles.checkboxActive]}>
-                        {selectedCategories.has(cat.key) && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      <View style={[styles.checkbox, draftCategories.has(cat.key) && styles.checkboxActive]}>
+                        {draftCategories.has(cat.key) && <Ionicons name="checkmark" size={14} color="#fff" />}
                       </View>
-                      <Text style={[styles.categoryCheckboxText, selectedCategories.has(cat.key) && styles.categoryCheckboxTextActive]}>{cat.label}</Text>
+                      <Text style={[styles.categoryCheckboxText, draftCategories.has(cat.key) && styles.categoryCheckboxTextActive]}>{cat.label}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
-                <TouchableOpacity style={styles.applyBtn} onPress={() => { setShowCategoryPicker(false); fetchPapers(selectedCategories, selectedYear, selectedMonth, customFrom, customTo); }}>
+                <TouchableOpacity style={styles.applyBtn} onPress={applyCategories}>
                   <Text style={styles.applyBtnText}>Apply</Text>
                 </TouchableOpacity>
               </View>
