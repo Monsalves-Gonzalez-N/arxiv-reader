@@ -181,6 +181,7 @@ export default function Index() {
   const [showCategoryPicker, setShowCategoryPicker] = useState(false);
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const olderStartRef = useRef(0);
   const dwellStartRef = useRef<number>(Date.now());
@@ -215,6 +216,7 @@ export default function Index() {
       setSession(session);
     });
     loadSavedCategories();
+    AsyncStorage.getItem('onboarding_seen').then(val => { if (!val) setShowOnboarding(true); });
     return () => subscription.unsubscribe();
   }, []);
 
@@ -478,6 +480,17 @@ export default function Index() {
 
   const openCoffee = () => Linking.openURL(COFFEE_LINK);
   const openPaper = () => currentPaper && Linking.openURL(currentPaper.link);
+
+  const dismissOnboarding = useCallback(() => {
+    setShowOnboarding(false);
+    AsyncStorage.setItem('onboarding_seen', '1');
+  }, []);
+
+  useEffect(() => {
+    if (!showOnboarding) return;
+    const t = setTimeout(dismissOnboarding, 6000);
+    return () => clearTimeout(t);
+  }, [showOnboarding, dismissOnboarding]);
 
   const allPapersSeen = !loading && papers.length > 0 && currentIndex >= papers.length;
   const noPapersFound = !loading && papers.length === 0;
@@ -854,6 +867,34 @@ export default function Index() {
             <ActivityIndicator size="small" color="#000" />
           </View>
         )}
+
+        {/* First-time onboarding hint */}
+        {showOnboarding && (
+          <TouchableOpacity style={styles.onboardingOverlay} activeOpacity={1} onPress={dismissOnboarding}>
+            <View style={styles.onboardingCard}>
+              <View style={styles.onboardingRow}>
+                <Ionicons name="swap-vertical-outline" size={16} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.onboardingText}>
+                  {Platform.OS === 'web' ? '↑ ↓   Browse papers' : 'Swipe up / down   Browse papers'}
+                </Text>
+              </View>
+              <View style={styles.onboardingRow}>
+                <Ionicons name="swap-horizontal-outline" size={16} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.onboardingText}>
+                  {Platform.OS === 'web' ? '← →   Read abstract' : 'Swipe left / right   Read abstract'}
+                </Text>
+              </View>
+              <View style={styles.onboardingRow}>
+                <Ionicons name="heart-outline" size={16} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.onboardingText}>Heart to save papers</Text>
+              </View>
+              <View style={styles.onboardingRow}>
+                <Ionicons name="options-outline" size={16} color="rgba(255,255,255,0.9)" />
+                <Text style={styles.onboardingText}>Top left to filter categories</Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+        )}
       </SafeAreaView>
     </GestureHandlerRootView>
   );
@@ -993,4 +1034,10 @@ const styles = StyleSheet.create({
   // Sign out
   signOutBtn: { marginTop: 24, paddingVertical: 14, borderRadius: 10, borderWidth: 1, borderColor: '#e0e0e0', alignItems: 'center' },
   signOutBtnText: { fontSize: 15, color: '#666' },
+
+  // Onboarding hint
+  onboardingOverlay: { position: 'absolute', bottom: 72, left: 0, right: 0, alignItems: 'center', pointerEvents: 'box-none' },
+  onboardingCard: { backgroundColor: 'rgba(0,0,0,0.72)', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 20, gap: 10, maxWidth: 280 },
+  onboardingRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  onboardingText: { fontSize: 13, color: 'rgba(255,255,255,0.88)', letterSpacing: 0.1 },
 });
