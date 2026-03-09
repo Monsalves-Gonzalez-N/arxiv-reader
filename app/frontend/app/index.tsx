@@ -388,34 +388,35 @@ export default function Index() {
     fetchPapers(draftCategories, selectedYear, selectedMonth, customFrom, customTo);
   };
 
-  const toggleLike = async (paper: Paper) => {
-    const isLiked = likedPapers.has(paper.id);
+  const toggleLike = async (paper: any) => {
+    const paperId = paper.id || paper.paper_id;
+    const isLiked = likedPapers.has(paperId);
     // Optimistic update first — avoids race condition with fetchLikedPapers
     if (isLiked) {
-      setLikedPapers(prev => { const s = new Set(prev); s.delete(paper.id); return s; });
-      setLikedPapersList(prev => prev.filter(p => p.paper_id !== paper.id));
+      setLikedPapers(prev => { const s = new Set(prev); s.delete(paperId); return s; });
+      setLikedPapersList(prev => prev.filter(p => p.paper_id !== paperId));
     } else {
-      setLikedPapers(prev => new Set(prev).add(paper.id));
-      setLikedPapersList(prev => [...prev, { paper_id: paper.id, title: paper.title, abstract: paper.abstract, authors: paper.authors, published: paper.published, link: paper.link, category: paper.category }]);
+      setLikedPapers(prev => new Set(prev).add(paperId));
+      setLikedPapersList(prev => [...prev, { paper_id: paperId, title: paper.title, abstract: paper.abstract, authors: paper.authors, published: paper.published, link: paper.link, category: paper.category }]);
     }
     const headers: any = { ...(await getAuthHeaders()), 'Content-Type': 'application/json' };
     try {
       if (isLiked) {
-        await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes/${paper.id}`, { method: 'DELETE', headers });
+        await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes/${paperId}`, { method: 'DELETE', headers });
       } else {
         await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/likes`, {
           method: 'POST', headers,
-          body: JSON.stringify({ paper_id: paper.id, title: paper.title, abstract: paper.abstract, authors: paper.authors, published: paper.published, link: paper.link, category: paper.category }),
+          body: JSON.stringify({ paper_id: paperId, title: paper.title, abstract: paper.abstract, authors: paper.authors, published: paper.published, link: paper.link, category: paper.category }),
         });
       }
     } catch (error) {
       // Revert optimistic update on failure
       if (isLiked) {
-        setLikedPapers(prev => new Set(prev).add(paper.id));
-        setLikedPapersList(prev => [...prev, { paper_id: paper.id, title: paper.title, abstract: paper.abstract, authors: paper.authors, published: paper.published, link: paper.link, category: paper.category }]);
+        setLikedPapers(prev => new Set(prev).add(paperId));
+        setLikedPapersList(prev => [...prev, { paper_id: paperId, title: paper.title, abstract: paper.abstract, authors: paper.authors, published: paper.published, link: paper.link, category: paper.category }]);
       } else {
-        setLikedPapers(prev => { const s = new Set(prev); s.delete(paper.id); return s; });
-        setLikedPapersList(prev => prev.filter(p => p.paper_id !== paper.id));
+        setLikedPapers(prev => { const s = new Set(prev); s.delete(paperId); return s; });
+        setLikedPapersList(prev => prev.filter(p => p.paper_id !== paperId));
       }
       console.error('Error toggling like:', error);
     }
