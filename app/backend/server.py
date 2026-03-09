@@ -700,6 +700,13 @@ async def get_for_you_papers(
         logging.error(f"Error fetching for-you papers: {e}")
         raise HTTPException(status_code=500, detail=f"Error fetching papers: {str(e)}")
 
+@api_router.get("/me")
+async def get_me(request: Request):
+    """Returns the resolved user_id and their like count — for verifying auth is working correctly"""
+    user_id = get_device_id(request)
+    like_count = await db.liked_papers.count_documents({"user_id": user_id})
+    return {"user_id": user_id, "like_count": like_count}
+
 # Include router
 app.include_router(api_router)
 
