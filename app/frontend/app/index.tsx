@@ -219,7 +219,9 @@ export default function Index() {
   }, []);
 
   const signInWithGoogle = async () => {
-    const redirectTo = ExpoLinking.createURL('auth/callback');
+    const redirectTo = Platform.OS === 'web'
+      ? `${window.location.origin}/auth/callback`
+      : ExpoLinking.createURL('auth/callback');
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },
