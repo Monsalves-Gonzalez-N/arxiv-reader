@@ -117,7 +117,8 @@ def _resolve_user(request: Request):
         token = auth_header[7:]
         try:
             signing_key = _jwks_client.get_signing_key_from_jwt(token)
-            payload = jwt.decode(token, signing_key.key, algorithms=[signing_key.algorithm_name], audience="authenticated")
+            alg = jwt.get_unverified_header(token).get("alg", "RS256")
+            payload = jwt.decode(token, signing_key.key, algorithms=[alg], audience="authenticated")
             user_id = payload.get("sub")
             if user_id:
                 return user_id, None
