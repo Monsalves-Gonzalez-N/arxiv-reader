@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
+  Alert,
   View,
   Text,
   StyleSheet,
@@ -186,6 +187,7 @@ export default function Index() {
   const [showCategorySetup, setShowCategorySetup] = useState(false);
   const [setupDraft, setSetupDraft] = useState<Set<string>>(new Set());
 
+  const anonSessionId = useRef('anon-' + Math.random().toString(36).slice(2) + Date.now().toString(36));
   const olderStartRef = useRef(0);
   const dwellStartRef = useRef<number>(Date.now());
   const engagedIdsRef = useRef<Set<string>>(new Set());
@@ -240,8 +242,7 @@ export default function Index() {
 const getAuthHeaders = async (): Promise<Record<string, string>> => {
     const { data: { session: s } } = await supabase.auth.getSession();
     if (s?.access_token) return { 'Authorization': `Bearer ${s.access_token}` };
-    const id = await AsyncStorage.getItem('device_id');
-    return id ? { 'X-Device-ID': id } : {};
+    return { 'X-Device-ID': anonSessionId.current };
   };
 
   const loadSavedCategories = async () => {
@@ -389,6 +390,13 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
   };
 
   const toggleLike = async (paper: any) => {
+    if (!session) {
+      Alert.alert('Sign in to like papers', 'Create a free account to save your favourite papers and get personalised recommendations.', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign in with Google', onPress: signInWithGoogle },
+      ]);
+      return;
+    }
     const paperId = paper.paper_id || paper.id;
     const isLiked = likedPapers.has(paperId);
     // Optimistic update first — avoids race condition with fetchLikedPapers
