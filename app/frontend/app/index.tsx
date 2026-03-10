@@ -182,7 +182,6 @@ export default function Index() {
   const [draftCategories, setDraftCategories] = useState<Set<string>>(new Set());
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [meData, setMeData] = useState<{ user_id: string; like_count: number; auth_error?: string } | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showCategorySetup, setShowCategorySetup] = useState(false);
   const [setupDraft, setSetupDraft] = useState<Set<string>>(new Set());
@@ -238,18 +237,7 @@ export default function Index() {
     await supabase.auth.signOut();
   };
 
-  const fetchMe = useCallback(async () => {
-    try {
-      const headers = await getAuthHeaders();
-      const res = await fetch(`${EXPO_PUBLIC_BACKEND_URL}/api/me`, { headers });
-      const data = await res.json();
-      setMeData(data);
-    } catch {
-      setMeData(null);
-    }
-  }, []);
-
-  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+const getAuthHeaders = async (): Promise<Record<string, string>> => {
     const { data: { session: s } } = await supabase.auth.getSession();
     if (s?.access_token) return { 'Authorization': `Bearer ${s.access_token}` };
     const id = await AsyncStorage.getItem('device_id');
@@ -712,24 +700,6 @@ export default function Index() {
                 <Text style={styles.settingsItemSub}>Signed in with Google</Text>
               </View>
             </View>
-            {meData && (
-              <View style={{ marginHorizontal: 16, marginBottom: 12, padding: 12, backgroundColor: meData.user_id === 'anonymous' ? '#fff0f0' : '#f0fff4', borderRadius: 10, borderWidth: 1, borderColor: meData.user_id === 'anonymous' ? '#ffcccc' : '#b2f5c8' }}>
-                <Text style={{ fontSize: 11, fontWeight: '600', color: meData.user_id === 'anonymous' ? '#c00' : '#1a7a3a', marginBottom: 4 }}>
-                  {meData.user_id === 'anonymous' ? '⚠️ Auth not working — anonymous user' : '✓ Auth OK'}
-                </Text>
-                <Text style={{ fontSize: 10, color: '#555', fontFamily: 'monospace' }} selectable>
-                  ID: {meData.user_id}
-                </Text>
-                <Text style={{ fontSize: 10, color: '#555', marginTop: 2 }}>
-                  Likes in DB: {meData.like_count}
-                </Text>
-                {meData.auth_error && (
-                  <Text style={{ fontSize: 10, color: '#c00', marginTop: 4 }} selectable>
-                    Error: {meData.auth_error}
-                  </Text>
-                )}
-              </View>
-            )}
             <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
               <Text style={styles.signOutBtnText}>Sign out</Text>
             </TouchableOpacity>
@@ -764,7 +734,7 @@ export default function Index() {
                 <View style={styles.badge}><Text style={styles.badgeText}>{likedPapers.size}</Text></View>
               )}
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconBtn} onPress={() => { fetchMe(); setCurrentView('settings'); }}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => setCurrentView('settings')}>
               <Ionicons name="person-outline" size={22} color="#000" />
             </TouchableOpacity>
           </View>
