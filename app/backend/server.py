@@ -103,22 +103,32 @@ class PapersResponse(BaseModel):
 
 def get_device_id(request: Request) -> str:
     """Extract user ID from Supabase JWT (JWKS/RS256), fallback to device ID, fallback to anonymous"""
+    user_id, _ = _resolve_user(request)
+    return user_id
+
+def _resolve_user(request: Request):
+    """Returns (user_id, error_detail) for diagnostics"""
     auth_header = request.headers.get("Authorization", "")
     if auth_header.startswith("Bearer "):
         if not _jwks_client:
-            logging.error("SUPABASE_URL is not set — cannot verify JWT, falling back to anonymous")
-        else:
-            token = auth_header[7:]
-            try:
-                signing_key = _jwks_client.get_signing_key_from_jwt(token)
-                payload = jwt.decode(token, signing_key.key, algorithms=["RS256"], audience="authenticated")
-                user_id = payload.get("sub")
-                if user_id:
-                    return user_id
-                logging.warning("JWT decoded but 'sub' claim is missing")
-            except Exception as e:
-                logging.error(f"JWT decode failed: {e}")
-    return request.headers.get("X-Device-ID") or "anonymous"
+            msg = "SUPABASE_URL is not set — cannot verify JWT"
+            logging.error(msg)
+            return "anonymous", msg
+        token = auth_header[7:]
+        try:
+            signing_key = _jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(token, signing_key.key, algorithms=["RS256"], audience="authenticated")
+            user_id = payload.get("sub")
+            if user_id:
+                return user_id, None
+            msg = "JWT decoded but 'sub' claim is missing"
+            logging.warning(msg)
+            return "anonymous", msg
+        except Exception as e:
+            msg = f"JWT decode failed: {e}"
+            logging.error(msg)
+            return "anonymous", msg
+    return request.headers.get("X-Device-ID") or "anonymous", "no Bearer token"
 
 # Helper functions
 async def get_recent_paper_ids(category: str):
@@ -703,9 +713,9 @@ async def get_for_you_papers(
 @api_router.get("/me")
 async def get_me(request: Request):
     """Returns the resolved user_id and their like count — for verifying auth is working correctly"""
-    user_id = get_device_id(request)
+    user_id, auth_error = _resolve_user(request)
     like_count = await db.liked_papers.count_documents({"user_id": user_id})
-    return {"user_id": user_id, "like_count": like_count}
+    return {"user_id": user_id, "like_count": like_count, "auth_error": auth_error}
 
 # Include router
 app.include_router(api_router)

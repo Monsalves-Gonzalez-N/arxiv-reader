@@ -182,7 +182,7 @@ export default function Index() {
   const [draftCategories, setDraftCategories] = useState<Set<string>>(new Set());
   const [session, setSession] = useState<Session | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-  const [meData, setMeData] = useState<{ user_id: string; like_count: number } | null>(null);
+  const [meData, setMeData] = useState<{ user_id: string; like_count: number; auth_error?: string } | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [showCategorySetup, setShowCategorySetup] = useState(false);
   const [setupDraft, setSetupDraft] = useState<Set<string>>(new Set());
@@ -723,6 +723,11 @@ export default function Index() {
                 <Text style={{ fontSize: 10, color: '#555', marginTop: 2 }}>
                   Likes in DB: {meData.like_count}
                 </Text>
+                {meData.auth_error && (
+                  <Text style={{ fontSize: 10, color: '#c00', marginTop: 4 }} selectable>
+                    Error: {meData.auth_error}
+                  </Text>
+                )}
               </View>
             )}
             <TouchableOpacity style={styles.signOutBtn} onPress={signOut}>
